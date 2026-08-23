@@ -247,3 +247,58 @@ polluted with failed payments is a realistic exception class rather than an
 invented one. I can now generate that class from **Razorpay's own documented
 failure modes** instead of authoring it myself, which is one more label I do not
 have to be trusted about.
+
+---
+
+### #10 — headless minting is RED: checkout runs hCaptcha, and I will not beat it
+
+**Date** 23 Aug · **Verdict** RED, fallback taken · **Probe** `/tmp/mint4.py`
+
+**Symptom.** Razorpay's hosted checkout drives fine headlessly right up to
+submission: the page renders, contact details fill, the Cards method opens, and
+the card fields populate correctly. Clicking **Continue** then does nothing
+visible. Enumerating every frame on the page found the reason:
+
+```
+[newassets.hcaptcha.com/captcha/v1/…]  "Please try again. ⚠️ | Verify | EN"
+```
+
+**Cause.** Checkout loads bot detection — invisible hCaptcha via Stripe's
+`human-security` bundle, alongside a `sardine.ai` device collector. Headless
+Chromium trips it. An earlier attempt using `fill()` failed for a *different*
+and more mundane reason (React never sees a synthetic value assignment), so
+switching to `press_sequentially` was necessary to get far enough to discover
+the real blocker underneath.
+
+**Decision: stop.** Defeating a payment provider's fraud controls to generate
+demo data is out of bounds on its own terms, and it is also self-defeating here
+— a submission whose data pipeline depends on evading Razorpay's bot detection
+is not one you want to explain to Razorpay's panel. The 300-payment automated
+pool is cut. This was pre-planned as cut-list item 5, decided on day one rather
+than discovered on day eleven.
+
+**What it actually costs, which is less than it looks.** The sealed,
+hash-committed generator was already PRIMARY ground truth (`DATA.md`), chosen
+before this probe rather than retreated to after it. Live minting was only ever
+going to strengthen two specific things:
+
+1. **The fee model** — and this survives intact, because it needs a *handful* of
+   real captured payments, not hundreds. One already exists
+   (`pay_TTGbjjcwSCSQaC`: 49900p → fee 1098p, exactly 2.200%) and a few more
+   done by hand pin the rounding rule.
+2. **A live Razorpay-authored settlement grouping** — which was never available
+   anyway: `GET /v1/settlements` returns empty on an unactivated test account,
+   settlement is T+2 working days, and no documentation says test mode produces
+   settlements at all.
+
+So the load-bearing claim is unchanged: the closure identity is validated
+against **Razorpay's own published sample reports**, which are externally
+authored and need no API at all.
+
+**The honest sentence this forces, said on camera.** "The settlement groupings
+in my evaluation corpus were produced by a seeded script that was sealed and
+hash-committed before the solver existed — not by Razorpay's engine. The
+identity that script implements is the one I verified against Razorpay's own
+published sample data, and the fee model is calibrated against real captured
+test payments." That is weaker than "Razorpay computed my answer key," and it is
+what is true.
