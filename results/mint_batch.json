@@ -1,0 +1,52 @@
+{
+  "created_at": "2026-08-23T16:02:31.465878+00:00",
+  "purpose": "fee-model calibration; amounts chosen to pin the rounding rule",
+  "observed_rate": "2.200% (fee = amount * 11/500), from pay_TTGbjjcwSCSQaC",
+  "links": [
+    {
+      "amount_paise": 100,
+      "why": "smallest legal amount; 2.2% = 2.2p. Razorpay's sample shows fee=1p tax=0",
+      "payment_link_id": "plink_TTGnn2gycnT63C",
+      "short_url": "https://rzp.io/rzp/NoefWkg",
+      "predicted_fee_half_up": 2,
+      "predicted_fee_bankers": 2,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 249,
+      "why": "one paisa below a .5 fee boundary",
+      "payment_link_id": "plink_TTGnneT1t77VPq",
+      "short_url": "https://rzp.io/rzp/PnE664DY",
+      "predicted_fee_half_up": 5,
+      "predicted_fee_bankers": 5,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 250,
+      "why": "fee = 5.5p exactly \u2014 half-up vs banker's rounding",
+      "payment_link_id": "plink_TTGnoFmV9EVuuL",
+      "short_url": "https://rzp.io/rzp/T01sthkJ",
+      "predicted_fee_half_up": 6,
+      "predicted_fee_bankers": 6,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 251,
+      "why": "one paisa above a .5 fee boundary",
+      "payment_link_id": "plink_TTGnpI6pC9mlMp",
+      "short_url": "https://rzp.io/rzp/BpLFu3h",
+      "predicted_fee_half_up": 6,
+      "predicted_fee_bankers": 6,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 750,
+      "why": "fee = 16.5p exactly \u2014 second rounding probe",
+      "payment_link_id": "plink_TTGnpwGCiP3sDv",
+      "short_url": "https://rzp.io/rzp/In6n6wG",
+      "predicted_fee_half_up": 17,
+      "predicted_fee_bankers": 16,
+      "distinguishes_rounding": true
+    }
+  ]
+}
