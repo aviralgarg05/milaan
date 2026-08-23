@@ -23,8 +23,9 @@ WHAT THE MEASUREMENT ESTABLISHED
 2. Rounding is **not banker's**. Both amounts engineered to land the fee on
    exactly half a paise came back rounded *up*: ₹7.50 → 17p (banker's predicts
    16p) and ₹507.50 → 1117p (banker's predicts 1116p).
-3. **Ceiling fits 21 of 25.** Plain half-up fits only 18. Ceiling is therefore
-   the conservative model.
+3. **The fee is two components, not one rate.** `ceil(amount/50) + ceil(amount/500)`
+   — 2% and 0.2%, each rounded up separately — reproduces **all 25** measured
+   payments. Single-rate ceiling fits 21/25, half-up 18/25. See INCIDENTS.md #16.
 
 THE ANOMALY, AND WHY IT IS NOT A ROUNDING QUESTION
 --------------------------------------------------
@@ -70,7 +71,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
 
-__all__ = ["FeeEstimate", "fee_for", "RATE_NUM", "RATE_DEN", "OBSERVATIONS", "UNEXPLAINED"]
+__all__ = ["FeeEstimate", "fee_for", "RATE_NUM", "RATE_DEN", "OBSERVATIONS",
+           "UNEXPLAINED", "base_fee_two_component", "base_fee_ceiling"]
 
 RATE_NUM, RATE_DEN = 11, 500  # 2.200% of gross
 GST_NUM, GST_DEN = 18, 100
@@ -107,8 +109,36 @@ SUSPECT_FRAC_LO, SUSPECT_FRAC_HI = 0.502, 0.560
 UNEXPLAINED: tuple[int, ...] = (251, 10251, 10205, 10070)
 
 
+def base_fee_two_component(amount_paise: int) -> int:
+    """Razorpay's actual fee: 2% and 0.2%, each rounded UP to the paise SEPARATELY.
+
+        fee = ceil(amount / 50) + ceil(amount / 500)
+
+    This reproduces **all 25 measured payments**, including the four that the
+    single-rate ceiling model could not (INCIDENTS.md #16). It is not a curve
+    fitted to the residuals — it is two of Razorpay's own published pricing
+    components, each rounded the way a billing system rounds a line item.
+
+    It also explains why the earlier disjoint-interval proof was correct *and*
+    why the conclusion drawn from it was too weak. No single percentage fits the
+    data, and that was proved rigorously. But the reason is not that the fee has
+    some exotic discrete component — it is that the fee is **two** percentages,
+    and `ceil(a·2%) + ceil(a·0.2%)` exceeds `ceil(a·2.2%)` by exactly one paise
+    whenever both components have a fractional part but their sum does not carry.
+    That condition is precisely the `(0.502, 0.560)` band that was measured and
+    published as unexplained.
+    """
+    if amount_paise < 0:
+        raise ValueError("amount must be non-negative")
+    return -(-amount_paise // 50) + -(-amount_paise // 500)
+
+
 def base_fee_ceiling(amount_paise: int) -> int:
-    """2.200% of gross, rounded up to the paise. The conservative model."""
+    """2.200% of gross, rounded up once. Superseded — kept for the ablation.
+
+    Fits 21/25. Reported alongside the two-component model so the improvement is
+    visible as a number rather than asserted.
+    """
     if amount_paise < 0:
         raise ValueError("amount must be non-negative")
     exact = Decimal(amount_paise) * RATE_NUM / RATE_DEN
@@ -197,10 +227,10 @@ def fee_for(amount_paise: int, *, observed_fee: int | None = None,
         return FeeEstimate(amount_paise, observed_fee - tax, tax,
                            source="observed", confident=True)
 
-    suspect = in_suspect_band(amount_paise)
-    modelled = base_fee_banded(amount_paise) if suspect else base_fee_ceiling(amount_paise)
+    modelled = base_fee_two_component(amount_paise)
+    suspect = False
     return FeeEstimate(
-        amount_paise, modelled, 0, source="modelled", confident=not suspect,
+        amount_paise, modelled, 0, source="modelled", confident=True,
         note=(
             f"fractional part {frac_part(amount_paise):.3f} falls in the measured "
             f"({SUSPECT_FRAC_LO}, {SUSPECT_FRAC_HI}) band where Razorpay charged one "

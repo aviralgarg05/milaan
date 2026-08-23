@@ -601,3 +601,64 @@ code, not by me writing more of it — and both were in modules I had already
 covered with tests I trusted. #14 was a blind spot in my generator; #15 was
 knowledge that lived in a test helper and a script but never reached the module
 that needed it. Neither was a hard bug. Both were invisible from the inside.
+
+---
+
+### #16 — the anomaly was not exotic. The fee is two rates, not one.
+
+**Date** 23 Aug · **Found by** an external audit of this repo · **Pinned by** `test_the_two_component_model_reproduces_every_observation`
+
+**What I had published.** Incidents #12 and #12b reported four payments whose
+fee sat one paise above `ceil(amount × 2.2%)`, localised the effect to a
+fractional-part band of `(0.502, 0.560)`, and proved rigorously that **no single
+percentage of gross, under any rounding rule, reproduces all 25 observations** —
+the feasible rate interval intersects to the empty set. I concluded there was
+"a discrete component that 25 samples localise but do not explain," shipped two
+models side by side, and flagged amounts in the band as low-confidence.
+
+**What it actually is.**
+
+```
+fee = ceil(amount / 50) + ceil(amount / 500)
+```
+
+Two percent and nought-point-two percent — Razorpay's own published MDR and
+platform-fee components — **each rounded up to the paise separately**, the way a
+billing system rounds a line item rather than a total. It reproduces **25 of 25**
+measured payments, including all four I had published as unexplained. Single-rate
+ceiling fits 21/25; half-up fits 18/25.
+
+**Why the band is exactly where it is.** `ceil(a·2%) + ceil(a·0.2%)` exceeds
+`ceil(a·2.2%)` by one paise precisely when both components have a fractional
+part but their sum does not carry into the next paise. That condition, worked
+out, *is* the `(0.502, 0.560)` interval I measured empirically and could not
+account for. The band was never mysterious — it was the carry boundary of a
+tariff I had assumed was a single rate. A test now asserts the band and the
+model-disagreement set are the same set, so the old measurement and the new
+explanation are pinned to each other.
+
+**The proof was right; the conclusion was too weak.** "No single rate fits" was
+correct and remains correct — it is exactly what a two-component tariff looks
+like from the outside. I proved the negative rigorously and then stopped, because
+I had framed the question as *which rate is it?* The question I never asked was
+*is it one rate?* The disjointness result was pointing straight at the answer and
+I read it as a dead end.
+
+**Why I am not deleting incidents #12 and #12b.** The measurement in them is
+sound, the controls did their job, and the impossibility proof still ships as a
+test. What was wrong was the inference. Rewriting them to look like I found this
+would be the exact dishonesty the log exists to prevent, and the sequence —
+measure carefully, prove a negative, draw too small a conclusion, get corrected —
+is more useful to a reader than a clean single entry would be.
+
+**What changes in the code.** The two-component model is primary.
+`base_fee_ceiling` stays as the ablation so the 21/25 → 25/25 improvement is a
+reported number rather than a claim. The `FEE_MODEL_RESIDUAL` flagging is
+removed: it was the right behaviour under uncertainty, and continuing it now
+that the uncertainty is gone would be theatre.
+
+**Fourth time now.** #6 (a float hazard I asserted without measuring), #7 (my
+test wrong, solver right), #14 and #15 (found by audit), and now this. Every one
+of them is a case where the thing that broke was my own conclusion rather than
+my code — and the two most valuable findings in this project both came from
+someone else reading it. That is worth more than a clean log.

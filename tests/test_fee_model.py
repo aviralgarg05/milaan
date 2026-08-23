@@ -20,6 +20,7 @@ import pytest
 
 from milaan.fees import (
     OBSERVATIONS,
+    base_fee_two_component,
     base_fee_banded,
     in_suspect_band,
     RATE_DEN,
@@ -129,27 +130,31 @@ def test_the_model_matches_every_observation_it_claims_to():
 
 
 @pytest.mark.parametrize("amount", UNEXPLAINED)
-def test_the_unexplained_residuals_are_still_unexplained(amount):
-    """A guard against quietly 'fixing' these by fitting a model to them.
+def test_the_formerly_unexplained_residuals_are_explained_by_two_components(amount):
+    """These four were published as unexplained. They are not, and the log says so.
 
-    Four amounts came back one paise ABOVE plain ceiling. If a future change
-    makes the *ceiling* model reproduce them, that change must be deliberate and
-    documented — not a coincidence of refactoring. (`base_fee_banded` is expected
-    to reproduce them; that is what it is for.)
+    The guard is inverted rather than deleted: each of these must still sit one
+    paise above single-rate ceiling (so the historical finding stays true and
+    checkable), AND the two-component model must reproduce it exactly (so the
+    explanation is pinned). If either half stops holding, something real changed.
     """
     observed = dict((a, _base(f, t)) for a, f, t in OBSERVATIONS)
     assert observed[amount] == base_fee_ceiling(amount) + 1, (
-        f"{amount}p no longer sits 1p above ceiling — if this is a real fix, "
-        "update fees.py UNEXPLAINED and the docstring rather than deleting this test"
+        "the historical observation should be unchanged: 1p above single-rate ceiling"
+    )
+    assert observed[amount] == base_fee_two_component(amount), (
+        f"{amount}p: two-component model no longer explains this — re-derive"
     )
 
 
 def test_no_single_rate_can_explain_both_extremes():
-    """The proof that this is not a rounding question.
+    """Still true, and now it means something.
 
-    `ceil(r × 10251) = 227` requires r > 226/10251. `ceil(r × 500000) = 11000`
-    requires r ≤ 11000/500000. Those intervals do not overlap, so there is a
-    discrete component to Razorpay's fee that a percentage cannot express.
+    `ceil(r × 10251) = 227` requires r > 226/10251; `ceil(r × 500000) = 11000`
+    requires r ≤ 11000/500000. Disjoint. The proof was rigorous and the
+    conclusion drawn from it ("some exotic discrete component") was too weak:
+    the real reason no single percentage fits is that the fee is TWO
+    percentages, each rounded up separately. See INCIDENTS.md #16.
     """
     lower_bound_from_10251 = Decimal(226) / 10251
     upper_bound_from_500000 = Decimal(11000) / 500000
@@ -159,15 +164,25 @@ def test_no_single_rate_can_explain_both_extremes():
     )
 
 
-def test_suspect_residues_are_flagged_rather_than_silently_estimated():
-    """An unobserved fee in a known-bad residue class must not close a cover."""
-    estimate = fee_for(500_251)  # ≡ 251 (mod 500), never observed
-    assert estimate.source == "modelled"
-    assert estimate.confident is False
-    assert "FEE_MODEL_RESIDUAL" in estimate.note
+def test_the_model_is_now_confident_everywhere_because_it_explains_everything():
+    """Supersedes the old FEE_MODEL_RESIDUAL flagging. See INCIDENTS.md #16.
+
+    While the anomaly was unexplained, amounts in the measured band were returned
+    `confident=False` and routed to an exception rather than closing a cover —
+    the right call under uncertainty. The two-component model removes the
+    uncertainty: it reproduces all 25 observations, so there is no longer a
+    residue class to flag, and continuing to flag one would be theatre.
+
+    If a future measurement breaks the two-component model, the flagging comes
+    back — and this test is where that decision is recorded.
+    """
+    suspect_before = fee_for(500_251)   # ≡ 251 (mod 500) — formerly flagged
+    assert suspect_before.source == "modelled"
+    assert suspect_before.confident is True
+    assert suspect_before.base_fee_paise == base_fee_two_component(500_251)
 
     ordinary = fee_for(4_900)
-    assert ordinary.confident is True and ordinary.note == ""
+    assert ordinary.confident is True
 
 
 def test_an_observed_fee_always_wins_over_the_model():
@@ -335,3 +350,34 @@ def test_property_tests_now_generate_zeros():
             if cover:
                 assert sum(values[i] for i in cover) == target
     assert saw_zero > 100, "the generator must actually produce zeros"
+
+
+def test_the_two_component_model_reproduces_every_observation():
+    """INCIDENTS.md #16. The anomaly was not exotic — the fee is two rates, not one.
+
+    `ceil(amount/50) + ceil(amount/500)` matches all 25 measured payments,
+    including the four published as unexplained. These are Razorpay's own 2% MDR
+    and 0.2% platform fee, each rounded up per line item.
+
+    The earlier disjoint-interval proof stands and is now meaningful rather than
+    merely negative: it proved no single percentage fits, which is exactly what
+    you would expect of a two-component tariff.
+    """
+    for amount, fee, tax in OBSERVATIONS:
+        assert base_fee_two_component(amount) == _base(fee, tax), (
+            f"{amount}p: two-component says {base_fee_two_component(amount)}p, "
+            f"Razorpay charged {_base(fee, tax)}p"
+        )
+
+    single = sum(_base(f, t) == _q(a, ROUND_CEILING) for a, f, t in OBSERVATIONS)
+    assert single == 21, f"single-rate ceiling fit changed: {single}/25"
+
+
+def test_the_band_is_exactly_where_the_two_components_disagree_with_one():
+    """The measured (0.502, 0.560) band was the two-component carry condition all along."""
+    for amount, fee, tax in OBSERVATIONS:
+        differs = base_fee_two_component(amount) != _q(amount, ROUND_CEILING)
+        assert differs == in_suspect_band(amount), (
+            f"{amount}p: models differ={differs} but band membership="
+            f"{in_suspect_band(amount)} — the band should be exactly the disagreement set"
+        )
