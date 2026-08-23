@@ -44,7 +44,7 @@ def test_no_wrong_join_is_ever_reported():
 def test_headline_figures_are_what_the_submission_reports():
     score = run_batch(generate(), verbose=False)
     assert score["total_credits"] == 18
-    assert score["total_ledger_rows"] == 269
+    assert score["total_ledger_rows"] == 271
     assert score["matched"] == 9
     assert score["decidable_credits"] == 12
     assert abs(score["match_rate_decidable"] - 0.75) < 1e-9

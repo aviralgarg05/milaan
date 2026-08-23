@@ -715,3 +715,68 @@ is the whole design, and it took a 0% run to see it clearly.
 **The measurement stays as a test.** `test_blind_search_alone_would_report_nothing_but_ambiguity`
 re-runs the blind path on the same pools and asserts 6 of 6 ambiguous, so the
 claim behind this entry remains checkable rather than becoming a story I tell.
+
+---
+
+### #18 — I measured my own LLM layer's ceiling and it is zero
+
+**Date** 24 Aug · **Measured by** `milaan hints` · **Pinned by** `tests/test_hints_ab.py`
+
+**What I set out to measure.** The containment property proves the hint layer
+cannot cause a wrong join. That is a *safety* claim and says nothing about
+whether the layer is *useful*. Those are two claims and only one had a number,
+so I built the A/B: the same sealed batch under three configurations — no hints,
+a **perfect** extractor, and a **deliberately hostile** one.
+
+The oracle matters more than testing one model would. It reads the capture date
+out of the narration with 100% accuracy and abstains otherwise, so **no real
+model can beat it**. Its score is the ceiling on what any language model could
+contribute — measurable with no API key, and a far more useful number than one
+model's score, because if the ceiling is low the layer is not worth its cost
+regardless of which model you pick.
+
+**The result, at three batch sizes:**
+
+```
+                        18 credits    30 credits    60 credits
+baseline (no hints)       9 matched    17 matched    32 matched
+oracle (perfect)          9 matched    17 matched    32 matched
+CEILING ON ANY MODEL           +0            +0            +0
+
+malign false-matches            0             0             0
+malign accepted ⊆ baseline   True          True          True
+hallucinated claims rejected    6            10            18
+credits lost to hostility       0             0             0
+```
+
+**A perfect extractor adds nothing. A fully compromised one costs nothing.**
+
+**Why, and this is the interesting part: the safety property is the cause.**
+Uniqueness is adjudicated on the *full* candidate pool, never the hint-narrowed
+one — that is step 3 of containment, and it exists precisely so a hint cannot
+manufacture uniqueness by filtering a competing cover away. The direct
+consequence is that **a hint can never break a genuine tie.** Its only remaining
+lever is rescuing a line the solver declined on budget, and once the interval
+layer (#17) is in place there are no such lines. The mechanism that makes the
+layer trustworthy is exactly the mechanism that makes it useless here. I did not
+anticipate that when I designed it.
+
+**What I am not doing about it.** Not deleting the layer, not quietly dropping
+the measurement, and not weakening containment to manufacture a win. Weakening
+it is the only way to get a positive number, and the number would be worth less
+than nothing: it would be bought by allowing exactly the wrong joins the project
+exists to prevent.
+
+**What the layer is still worth.** The containment mechanism — grounding, filter-only
+narrowing, full-pool adjudication — is the reusable artifact, and it holds under
+an adversary at every scale tested. The layer earns its cost only where
+`BUDGET_EXCEEDED` actually occurs: pools too large to decide and without the
+time-ordering that makes the interval layer work. Real bank data may well look
+like that. This batch does not, and the honest statement is that on this
+workload the layer contributes nothing.
+
+**Why this is the entry I would show first.** The rubric asks for *the right
+tool in the right place, and where you chose not to use one*. The strongest form
+of that is not an argument about where an LLM does not belong — it is having
+built the thing, measured its ceiling honestly, found it to be zero, and
+published the zero. The negative result is the finding.

@@ -71,11 +71,19 @@ NARRATION_FORMATS = [
     "UPI/CR/{rrn}/RAZORPAY SOFTW/{bank}/Settlement",
     "RTGS-{utr}-RAZORPAY SOFTWARE PRIVATE LIMITED",
     "NEFT CR-{ifsc}-RAZORPAY SOFTWARE PVT LTD-{ref}",
-    # Deliberately opaque: no extractable identifier. These are the lines the
-    # grammar cannot read and the only ones the LLM hint layer is offered.
+    # Deliberately opaque: no identifier the grammar can extract. These are the
+    # only lines the LLM hint layer is ever offered.
     "SETTLEMENT CREDIT",
     "CR/{shortnum}/COLLECTION",
     "FUND TRANSFER RAZORPAY",
+    # Opaque to the grammar but carrying REAL signal a reader can use: the
+    # capture date, written in formats the date regex deliberately does not
+    # cover (`10 AUG 2026`, `10.08.26`). This is the honest case for a language
+    # model — the information is genuinely present in the string and genuinely
+    # not extractable by a finite set of patterns.
+    "RAZORPAY SETTLEMENT FOR {daymon}",
+    "COLLECTION DT {dotdate} RAZORPAY",
+    "CREDIT AGAINST BUSINESS OF {daymon}",
 ]
 BANKS = ["HDFC", "ICIC", "UTIB", "SBIN", "KKBK", "IDFB", "PUNB", "BARB"]
 
@@ -98,6 +106,7 @@ class BankCredit:
     narration: str
     settlement_id: str          # answer key
     planted_class: str          # answer key
+    captured_on: str = ""       # answer key: true capture date the narration may mention
 
 
 @dataclass
@@ -118,7 +127,7 @@ class Batch:
         for c in self.credits:
             d = asdict(c)
             if withhold_answers:
-                d.pop("settlement_id"), d.pop("planted_class")
+                d.pop("settlement_id"), d.pop("planted_class"), d.pop("captured_on")
             credits.append(d)
         return {"seed": self.seed, "ledger": rows, "credits": credits, "notes": self.notes}
 
@@ -146,9 +155,11 @@ def _settles_on(captured: date) -> date:
     return d
 
 
-def _narration(rng: random.Random, sid: str) -> str:
+def _narration(rng: random.Random, sid: str, captured: date) -> str:
     bank = rng.choice(BANKS)
     return rng.choice(NARRATION_FORMATS).format(
+        daymon=captured.strftime("%d %b %Y").upper(),
+        dotdate=captured.strftime("%d.%m.%y"),
         ifsc=f"{bank}0{rng.randint(0, 999999):06d}",
         utr=f"{bank}N{rng.randint(10**14, 10**15 - 1)}",
         rrn=f"{rng.randint(10**11, 10**12 - 1)}",
@@ -239,7 +250,8 @@ def generate(seed: int = 20260823, *, settlements: int = 18,
             credit_id=f"cr_{s_index:04d}",
             amount_paise=credit_amount,
             value_date=value_date.isoformat(),
-            narration=_narration(rng, sid),
+            narration=_narration(rng, sid, captured),
+            captured_on=captured.isoformat(),
             settlement_id=sid,
             planted_class=planted,
         ))
