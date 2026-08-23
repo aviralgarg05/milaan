@@ -662,3 +662,56 @@ test wrong, solver right), #14 and #15 (found by audit), and now this. Every one
 of them is a case where the thing that broke was my own conclusion rather than
 my code — and the two most valuable findings in this project both came from
 someone else reading it. That is worth more than a clean log.
+
+---
+
+### #17 — exact-cover search alone is not a reconciliation strategy
+
+**Date** 23 Aug · **Fixed by** `src/milaan/solver/interval.py` · **Pinned by** `test_blind_search_alone_would_report_nothing_but_ambiguity`
+
+**Symptom.** First end-to-end run of the batch loop. Match rate **0.0%**.
+`AMBIGUOUS_COVER` on **18 of 18** credits. Not one line resolved.
+
+**Cause, and it was not a bug.** The solver was right every single time. The
+candidate pool for a credit was every transaction captured within ±6 days —
+around 200 of them. That gives 2²⁰⁰ subsets against roughly 10⁷ achievable paise
+sums in range, so by pigeonhole nearly every target has many exact covers.
+**Ambiguity was not an edge case at that pool size; it was the guaranteed
+outcome.** An engine that reported a single cover anyway would have been
+guessing, and would have looked far better on the scorecard while being wrong.
+
+**Why this is the most useful thing the first run could have told me.** I had
+built the blind subset-sum solver first because it was the interesting
+algorithm — signed values, uniqueness proof, bitset DP, a budget. It is the
+thing a staff engineer reads and respects. It is also, on its own, useless here.
+The cheap layers I had listed in the README as "optimisations" and not yet
+written are not optimisations at all: **they are what makes the problem
+decidable.** Search is the fallback for the residue after structure has done the
+work, and I had built the fallback first and called it the product.
+
+**Fix.** The interval layer. Razorpay batches by capture time, so a cover is
+almost always a contiguous run in capture order. Contiguity collapses the search
+space from 2ⁿ subsets to n(n+1)/2 intervals — about 20,000 for n=200 rather than
+10⁶⁰ — which is few enough that a collision is informative rather than
+inevitable. Linear via prefix sums.
+
+**Result on the same batch, same seed:**
+
+```
+                        blind only      interval → blind
+match rate (decidable)      0.0%              75.0%
+correctly refused            0/6                6/6
+false matches                  0                  0
+resolved by interval           —              13/18
+throughput             6.6 cr/s           25.5 cr/s
+```
+
+**What did not change is the point.** False matches were zero before and zero
+after. The blind solver at 0% was not broken — it was refusing, correctly, on
+problems that genuinely had many answers. Adding structure did not make the
+engine more willing to guess; it made the questions decidable. That distinction
+is the whole design, and it took a 0% run to see it clearly.
+
+**The measurement stays as a test.** `test_blind_search_alone_would_report_nothing_but_ambiguity`
+re-runs the blind path on the same pools and asserts 6 of 6 ambiguous, so the
+claim behind this entry remains checkable rather than becoming a story I tell.

@@ -11,10 +11,37 @@ Razorpay AI Buildathon 2026 · **Track 04 — AI Finance Controller**
 ## Start here
 
 ```bash
+uv run --with openpyxl --with-editable . python -m milaan.cli run
+```
+
+No API key. No Docker. No network. It reconciles 18 bank credits against 269
+ledger rows and prints:
+
+```
+  MATCH RATE       50.0%  (9/18)
+  … on decidable credits        75.0%  (9/12)
+  CORRECTLY REFUSED 6/6  planted-undecidable credits where refusing IS the right answer
+
+  FALSE MATCHES    0   ← no wrong join was ever reported
+```
+
+**The number that matters is the third one.** A match rate can be raised by
+guessing; a false-match count cannot. A wrong join produces a reconciliation
+report that balances, so nothing downstream ever catches it — which makes "how
+often were you confidently wrong" the only figure a finance reviewer needs.
+
+Six of the eighteen credits are *planted undecidable*: a member withheld from the
+export, identical amounts admitting several covers, a fee-only row netting to
+zero. Refusing those is the correct answer, and MILAAN refused all six. Full
+caveats in [`LIMITS.md`](LIMITS.md).
+
+The test suite is the other half of the argument:
+
+```bash
 uv run --with pytest --with openpyxl --with-editable . pytest tests/ -q
 ```
 
-No API key. No Docker. No network. The first test is the argument:
+Its first test is the foundation:
 
 ```
 setl_Jq0XZksg0i2Fat   +99p +99p                        = 198p   vs settlement debit 198p  ✓
@@ -152,14 +179,16 @@ scale, and said so instead of quietly deleting the test.
 | Signed subset-sum + uniqueness + budget | done, verified vs brute force |
 | Narration grammar | **done** |
 | LLM hint layer + containment property | **done**, 33 tests |
-| Interval & perturbed-interval layers | **not started** |
-| Sealed ground-truth generator | **not started** |
-| Batch runner, match rate, exception list | **not started** — this is the Track 04 deliverable |
+| Interval layer | **done** — carries 13 of 18 credits |
+| Sealed ground-truth generator | **done**, seed + SHA-256 committed |
+| Batch runner, match rate, exception list | **done** — `milaan run` |
+| Anchor layer (UTR → settlement join) | **not built** — see LIMITS.md |
+| Perturbed-interval layer | **not built** — the WITH_REFUND residue |
+| Hint layer's *usefulness* measured in the batch | **not measured** |
 | 5-minute pitch video | **not started** |
 
-**What this repo cannot do yet:** run a batch, report a match rate, or emit an
-exception list. Those are what Track 04 actually grades, and they are the next
-and largest piece of work. Everything above is the machinery they will be built
-on, not a substitute for them.
+The containment property of the hint layer is proved and tested; how often it
+converts an exception into a match is **not yet measured**. Those are two
+separate claims and only one currently has a number behind it.
 
 Licence: MIT.
