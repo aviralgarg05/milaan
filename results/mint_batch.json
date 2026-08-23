@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-08-23T16:02:31.465878+00:00",
+  "created_at": "2026-08-23T16:06:19.537938+00:00",
   "purpose": "fee-model calibration; amounts chosen to pin the rounding rule",
   "observed_rate": "2.200% (fee = amount * 11/500), from pay_TTGbjjcwSCSQaC",
   "links": [
@@ -47,6 +47,123 @@
       "predicted_fee_half_up": 17,
       "predicted_fee_bankers": 16,
       "distinguishes_rounding": true
+    },
+    {
+      "amount_paise": 1250,
+      "why": "fee = 27.5p exactly \u2014 third rounding probe",
+      "payment_link_id": "plink_TTGou2mXwp7Zv0",
+      "short_url": "https://rzp.io/rzp/ZkgmxrR",
+      "predicted_fee_half_up": 28,
+      "predicted_fee_bankers": 28,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 4900,
+      "why": "\u20b949, ordinary small ticket",
+      "payment_link_id": "plink_TTGoy0utC3ZP1E",
+      "short_url": "https://rzp.io/rzp/4jO4zwJk",
+      "predicted_fee_half_up": 108,
+      "predicted_fee_bankers": 108,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 9900,
+      "why": "\u20b999 \u2014 the amount in Razorpay's own sample report",
+      "payment_link_id": "plink_TTGp1wBStSqACl",
+      "short_url": "https://rzp.io/rzp/0Uqwo4z",
+      "predicted_fee_half_up": 218,
+      "predicted_fee_bankers": 218,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 10249,
+      "why": "below a .5 boundary at a larger magnitude",
+      "payment_link_id": "plink_TTGp6FdeBjsuEv",
+      "short_url": "https://rzp.io/rzp/uv71rnA",
+      "predicted_fee_half_up": 225,
+      "predicted_fee_bankers": 225,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 10250,
+      "why": "fee = 225.5p exactly \u2014 rounding probe at \u20b9102.50",
+      "payment_link_id": "plink_TTGpA9ZIZGl3wC",
+      "short_url": "https://rzp.io/rzp/1YSWg8F",
+      "predicted_fee_half_up": 226,
+      "predicted_fee_bankers": 226,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 10251,
+      "why": "above a .5 boundary at a larger magnitude",
+      "payment_link_id": "plink_TTGqJEQ2ZCKHPD",
+      "short_url": "https://rzp.io/rzp/fnfCg2oJ",
+      "predicted_fee_half_up": 226,
+      "predicted_fee_bankers": 226,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 29900,
+      "why": "\u20b9299, common subscription price",
+      "payment_link_id": "plink_TTGqNEZWUMVIQJ",
+      "short_url": "https://rzp.io/rzp/ftXDa8p",
+      "predicted_fee_half_up": 658,
+      "predicted_fee_bankers": 658,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 49900,
+      "why": "\u20b9499 \u2014 matches the already-captured pay_TTGbjjcwSCSQaC",
+      "payment_link_id": "plink_TTGqR5Kpg6k2oj",
+      "short_url": "https://rzp.io/rzp/F1UOtQ4",
+      "predicted_fee_half_up": 1098,
+      "predicted_fee_bankers": 1098,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 50750,
+      "why": "fee = 1116.5p exactly \u2014 rounding probe at \u20b9507.50",
+      "payment_link_id": "plink_TTGqUwbLLR2g3S",
+      "short_url": "https://rzp.io/rzp/gYnfyfDX",
+      "predicted_fee_half_up": 1117,
+      "predicted_fee_bankers": 1116,
+      "distinguishes_rounding": true
+    },
+    {
+      "amount_paise": 71300,
+      "why": "\u20b9713, arbitrary non-round mid ticket",
+      "payment_link_id": "plink_TTGqZ9qtMkzs53",
+      "short_url": "https://rzp.io/rzp/oW05u4ag",
+      "predicted_fee_half_up": 1569,
+      "predicted_fee_bankers": 1569,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 99900,
+      "why": "\u20b9999, common D2C price point",
+      "payment_link_id": "plink_TTGrhvDAvlOJWQ",
+      "short_url": "https://rzp.io/rzp/bQFwSIzs",
+      "predicted_fee_half_up": 2198,
+      "predicted_fee_bankers": 2198,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 249900,
+      "why": "\u20b92,499, larger ticket",
+      "payment_link_id": "plink_TTGrlrOoDenl0q",
+      "short_url": "https://rzp.io/rzp/tc6oBmZa",
+      "predicted_fee_half_up": 5498,
+      "predicted_fee_bankers": 5498,
+      "distinguishes_rounding": false
+    },
+    {
+      "amount_paise": 500000,
+      "why": "\u20b95,000, top of the calibration range",
+      "payment_link_id": "plink_TTGrpftpgWCXmu",
+      "short_url": "https://rzp.io/rzp/siz6GwMN",
+      "predicted_fee_half_up": 11000,
+      "predicted_fee_bankers": 11000,
+      "distinguishes_rounding": false
     }
   ]
 }

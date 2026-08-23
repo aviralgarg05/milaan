@@ -302,3 +302,47 @@ identity that script implements is the one I verified against Razorpay's own
 published sample data, and the fee model is calibrated against real captured
 test payments." That is weaker than "Razorpay computed my answer key," and it is
 what is true.
+
+---
+
+### #11 — the rate limiter does not say 429, and a naive batch loses 13 of 18
+
+**Date** 23 Aug · **Fixed in** `scripts/mint_links.py` · **Pinned by** the registry's resume path
+
+**Symptom.** Minting 18 payment links in a tight loop: the first five succeeded,
+the remaining thirteen all failed at once.
+
+**Cause.** `POST /v1/payment_links` is rate limited, but it does not answer the
+way rate limiting is normally signalled. There is **no HTTP 429** and **no
+`Retry-After` header** — it returns a plain `400 BAD_REQUEST_ERROR` whose
+`description` is the string `"Too many requests"`. Code that branches on status
+code sees an ordinary bad request, concludes the payload is malformed, and gives
+up on an entity that would have succeeded a second later.
+
+**Why it mattered here specifically.** Each of those eighteen amounts was chosen
+to probe a particular fee-rounding boundary, and captured payments are now
+hand-made and therefore expensive (INCIDENTS.md #10). Silently dropping thirteen
+of them would not have produced an obviously broken batch — it would have
+produced a *smaller* one, still plausible, missing exactly the calibration points
+that distinguish half-up from banker's rounding.
+
+**Fix.** Three parts, and the third is the one that matters.
+
+1. Recognise the limiter by message rather than status code, since the status
+   code carries no information.
+2. Exponential backoff, 2s doubling to a 30s ceiling. Two amounts needed the
+   full ladder before succeeding.
+3. **The registry is a checkpoint.** Every minted link is written to
+   `results/mint_batch.json` immediately, and a re-run skips any amount already
+   present. A partial batch is resumable rather than restarted, which is what
+   made recovering the missing thirteen free instead of a re-mint of all
+   eighteen.
+
+**The general lesson, and it applies well beyond this script.** Two of the
+Razorpay behaviours found on day one — eventually-consistent list endpoints
+(#8) and a rate limiter disguised as a 400 (#11) — fail in the same direction:
+**they produce a short result set rather than an error.** A harness that trusts
+either one builds a candidate pool with holes in it, and the solver then reports
+exceptions that are artefacts of the harness while looking like genuine
+findings. Both are now handled by reconciling against ids recorded at creation
+time and never trusting a collection response to be complete.
