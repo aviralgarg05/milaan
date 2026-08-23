@@ -346,3 +346,70 @@ either one builds a candidate pool with holes in it, and the solver then reports
 exceptions that are artefacts of the harness while looking like genuine
 findings. Both are now handled by reconciling against ids recorded at creation
 time and never trusting a collection response to be complete.
+
+---
+
+### #12 — Razorpay's fee is not a percentage, and I can prove it
+
+**Date** 23 Aug · **Landed in** `src/milaan/fees.py` · **Pinned by** `tests/test_fee_model.py`
+
+**What I was testing.** A settlement credit is `Σ(payment − fee) − Σ(refunds)`,
+so a cover only closes to the paise if every member's fee is exactly right.
+Razorpay publishes a *rate* but no *rounding rule*, and the rounding rule is
+what a paise-exact identity turns on. So I minted eighteen payment links at
+amounts chosen to probe the boundary — `fee = amount × 11/500`, which lands on
+exactly half a paise when `amount ≡ 250 (mod 500)` — and had them paid by hand.
+
+**What came back.**
+
+1. Base rate confirmed: **2.200% of gross**, exact at the four largest amounts.
+2. Rounding is **not banker's**. Both half-paise probes rounded *up*:
+   ₹7.50 → 17p (banker's predicts 16p), ₹507.50 → 1117p (banker's predicts 1116p).
+   That was the question the batch was built to answer, and it is answered.
+3. **Ceiling fits 16/18. Half-up fits 13/18.** Ceiling is the model.
+
+**The two that nothing explains.**
+
+```
+    251p   exact   5.522   ceil   6   Razorpay charged   7
+  10251p   exact 225.522   ceil 226   Razorpay charged 227
+```
+
+Both `≡ 251 (mod 500)`, both odd, both one paise **above** ceiling. Their mirror
+images just below the boundary — 249p and 10249p, also odd — match ceiling
+exactly. All four odd amounts in the batch exceeded half-up; only one of
+fourteen even amounts did.
+
+**Why this is not a rounding question.** I tried to rescue it by fitting a
+different rate, and it cannot be done. `ceil(r × 10251) = 227` requires
+`r > 226/10251 ≈ 0.0220466`. `ceil(r × 500000) = 11000` requires
+`r ≤ 11000/500000 = 0.022`. **The intervals are disjoint.** No single percentage,
+under any rounding rule, reproduces both observations. There is a discrete
+component to Razorpay's fee computation that nineteen samples do not resolve.
+That proof ships as a test so a future refactor cannot quietly fit its way out
+of it.
+
+**What the system does about it.** `fee_for()` returns a fee *and* a confidence.
+An observed fee always beats the model — the model is a fallback for entities
+whose fee was never returned, never an override for one that was. An amount in a
+residue class known to defeat the model comes back `confident=False` and is
+routed to a `FEE_MODEL_RESIDUAL` exception rather than closing a cover.
+
+**Why this is the most useful thing found so far.** Incident #5 said, before any
+of this data existed, that the fee model's residual must be *reported as a
+number and any remainder made a named exception class, not absorbed*. I wrote
+that as a discipline. It turns out to be load-bearing: a model that absorbed
+these two would produce a cover that is off by exactly one paise, and a
+one-paisa error does not look wrong — it turns a correct match into an
+unexplained exception, or worse, lets a wrong subset close. Two payments out of
+nineteen, roughly 11%, would have been silently mis-modelled.
+
+**Also found:** `tax` is 0 on sixteen of nineteen payments and 18% on the two
+largest only. The threshold sits between ₹999 and ₹2,499 and is undocumented, so
+the GST line is only partially exercised in test mode. `LIMITS.md` says so
+rather than the results table implying otherwise.
+
+**Open question, honestly open.** Whether the anomaly is parity, the residue
+class, or something else entirely needs a targeted follow-up batch — odd/even
+pairs bracketing the boundary at several magnitudes. Until then it is reported
+as unexplained, because it is.
