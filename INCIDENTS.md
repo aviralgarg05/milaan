@@ -211,3 +211,39 @@ registry reconciles exactly.
 assumption. Nothing in Razorpay's documentation states the consistency model of
 the collection endpoints; it took a write and an immediate read to find it, on
 the first day the keys existed.
+
+---
+
+### #9 — the industry-standard test card is not a Razorpay test card
+
+**Date** 23 Aug · **Fixed in** `data/test-cards.md`
+
+**Symptom.** First attempt to capture a test payment failed with
+*"International cards are not supported. Please contact our support team for
+help."* Nothing was misconfigured on the account.
+
+**Cause.** I used `4111 1111 1111 1111` — the generic Visa test number that
+works on most gateways — from memory, without checking. It is not in Razorpay's
+documented domestic set, so their BIN lookup classifies it as international, and
+new accounts have international payments disabled by default. Razorpay's actual
+domestic test cards are `4100 2800 0000 1007` (Visa), `5500 6700 0000 1002`
+(Mastercard) and `6527 6589 0000 1005` (RuPay), per
+[razorpay/markdown-docs](https://github.com/razorpay/markdown-docs/blob/master/payments/payments/test-card-details.md).
+
+**Why the error message made it worse.** "International cards are not supported"
+is a plausible, actionable, *wrong* diagnosis. It points at an account setting
+rather than at the card number, and the obvious next step — enabling
+international payments — would not have fixed it. Ten minutes could easily have
+gone into the wrong drawer.
+
+**The useful thing this turned up.** Razorpay publishes **twenty error-scenario
+cards** — ten Visa `4100 2800 000X 000Y` and ten Mastercard
+`5305 6200 000X 000Y` — each producing a specific documented failure, plus the
+rule that an OTP under four digits fails the payment deliberately.
+
+That matters for MILAAN beyond unblocking the mint. Failed payments never
+settle, so they must *not* appear in a candidate pool — and a candidate pool
+polluted with failed payments is a realistic exception class rather than an
+invented one. I can now generate that class from **Razorpay's own documented
+failure modes** instead of authoring it myself, which is one more label I do not
+have to be trusted about.
