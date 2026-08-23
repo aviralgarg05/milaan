@@ -514,3 +514,90 @@ test-mode cap (#13) is now spent, so the corpus is frozen at 25. Narrowing
 `(0.502, 0.560)` further, or explaining the discrete component behind it, needs
 an account this project does not have. `LIMITS.md` states the sample size and
 stops there.
+
+---
+
+### #14 — the solver called a provably ambiguous problem UNIQUE
+
+**Date** 23 Aug · **Found by** an external audit of this repo · **Pinned by** `test_a_zero_valued_candidate_makes_every_cover_ambiguous`
+
+**Symptom.** `solve([100, 0], 100)` returned `UNIQUE` with cover `(0,)`. Brute
+force finds **two** covers: `{0}` and `{0, 1}`. Same for `solve([0], 0)` (two
+covers) and `solve([100, 0, 0], 100)` (four).
+
+**Cause.** A zero-valued entry can join or leave any cover without changing its
+sum, so `k` zeros give every solution `2^k` equivalent variants. The bitset DP
+cannot see this: shifting by zero is the identity, so `reachable | (reachable << 0)`
+is a no-op, a zero-weight item is never selected during reconstruction, and
+`_find_second` only ever pins out members of the first solution — so an item
+that is absent from that solution is never tried. The solver returned the single
+cover that omits every zero and called it unique.
+
+**Why this is the worst bug in the project so far.** It falsifies the headline
+guarantee. MILAAN's entire claim is that `UNIQUE` means *no second cover exists*
+— that is the difference between a reconciliation engine and a suggestion
+engine, and it is the sentence the pitch is built on. For a whole class of
+inputs it was simply false.
+
+And it was reachable from real data, not a contrived fixture: `LedgerEntry.net`
+returns exactly `Paisa(0)` for any row where `debit == credit`, which a fee-only
+adjustment or a fully-refunded payment produces.
+
+**Why 100+ passing property tests missed it.** Every random generator I wrote
+starts at `rng.randint(1, ...)`. **A zero was never sampled — not once, in any
+test, in the entire suite.** The brute-force oracle was correct and would have
+caught this immediately; it was never handed an input that could expose it. The
+oracle was right and the corpus was blind, which is a more uncomfortable failure
+than a wrong oracle: every green run was evidence about a region of the input
+space I had silently excluded.
+
+**Fix.** Zero-valued candidates are partitioned out before the DP. If any exist
+and a cover exists, the verdict is `AMBIGUOUS` with both witnesses — the cover
+with and without a zero. `test_property_tests_now_generate_zeros` asserts the
+generator actually produces zeros, so the corpus itself is now under test rather
+than only the solver.
+
+**What I take from it.** A property test is only as good as its generator, and
+"all tests pass" is a statement about the corpus as much as the code. The
+generator is now an artifact I review, not scaffolding I write once.
+
+---
+
+### #15 — `fee` meant two different things and the difference was exactly the GST
+
+**Date** 23 Aug · **Found by** an external audit of this repo · **Pinned by** `test_observed_and_modelled_fees_agree_on_what_net_means`
+
+**Symptom.** `FeeEstimate.fee_paise` was **tax-inclusive** when it came from
+Razorpay's API and **tax-exclusive** when it came from the model. One ₹2,499
+payment produced three different answers for its net:
+
+```
+observed  fee_paise=6488 tax_paise=990  ->  amount-fee-tax = 242422   (wrong, double-counts GST)
+modelled  fee_paise=5498 tax_paise=0    ->  amount-fee-tax = 244402   (wrong, no GST at all)
+truth     Razorpay charged 6488 all-in  ->  net             243412
+```
+
+**Cause.** Razorpay reports `fee` **inclusive** of `tax`, while the 2.200% rate
+applies to the base. I knew this — `tests/test_fee_model.py` defines
+`_base(fee, tax) = fee - tax` with that exact comment, and
+`scripts/mint_followup.py` does the same subtraction. The knowledge simply never
+made it into `fees.py`, so the two paths disagreed about what a single field
+name meant.
+
+**Why 990 paise matters here more than it sounds.** A cover either closes
+exactly or it does not. An off-by-990p member does not produce a slightly wrong
+total — it turns a correct match into an unexplained exception, or lets a wrong
+subset close. This is precisely the silent financial misstatement the README's
+second paragraph is about, sitting in the module that computes money.
+
+**Fix.** The ambiguity is now unrepresentable. There is no field called `fee`:
+`base_fee_paise` is tax-exclusive on every path, `tax_paise` is the GST on it,
+`gross_fee_paise` is the all-in figure Razorpay reports, and
+`net_settled_paise` is the only number a cover is ever built from. A test asserts
+all four agree across every one of the 25 measured payments.
+
+**The pattern across #14 and #15.** Both were found by someone else reading the
+code, not by me writing more of it — and both were in modules I had already
+covered with tests I trusted. #14 was a blind spot in my generator; #15 was
+knowledge that lived in a test helper and a script but never reached the module
+that needed it. Neither was a hard bug. Both were invisible from the inside.

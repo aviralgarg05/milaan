@@ -139,8 +139,23 @@ def base_fee_banded(amount_paise: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class FeeEstimate:
+    """A fee, split unambiguously into base and tax.
+
+    There is deliberately no field called ``fee``. Razorpay's API reports ``fee``
+    **inclusive** of ``tax``, while the 2.200% rate applies to the base — so a
+    single ``fee_paise`` field means different things depending on whether it
+    came from the API or from the model, and ``amount - fee - tax`` double-counts
+    GST on one of those paths. That bug shipped here and cost 990 paise on a
+    single ₹2,499 payment (INCIDENTS.md #15).
+
+    The shape now makes it unrepresentable: ``base_fee_paise`` is always
+    tax-exclusive, ``tax_paise`` is always the GST on it, and ``gross_fee_paise``
+    is the all-in figure Razorpay reports. ``net_settled_paise`` is the only
+    number a cover should ever be built from.
+    """
+
     amount_paise: int
-    fee_paise: int
+    base_fee_paise: int
     tax_paise: int
     source: str
     """``"observed"`` when Razorpay returned it, ``"modelled"`` when computed."""
@@ -156,6 +171,16 @@ class FeeEstimate:
 
     note: str = ""
 
+    @property
+    def gross_fee_paise(self) -> int:
+        """Base + tax — the all-in figure Razorpay's API reports as ``fee``."""
+        return self.base_fee_paise + self.tax_paise
+
+    @property
+    def net_settled_paise(self) -> int:
+        """What actually reaches the merchant. The only figure a cover uses."""
+        return self.amount_paise - self.gross_fee_paise
+
 
 def fee_for(amount_paise: int, *, observed_fee: int | None = None,
             observed_tax: int | None = None) -> FeeEstimate:
@@ -166,7 +191,10 @@ def fee_for(amount_paise: int, *, observed_fee: int | None = None,
     the cover has to close against.
     """
     if observed_fee is not None:
-        return FeeEstimate(amount_paise, observed_fee, observed_tax or 0,
+        # Razorpay's `fee` is inclusive of `tax`; split it so the base is the
+        # base on every path.
+        tax = observed_tax or 0
+        return FeeEstimate(amount_paise, observed_fee - tax, tax,
                            source="observed", confident=True)
 
     suspect = in_suspect_band(amount_paise)

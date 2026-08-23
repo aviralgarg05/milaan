@@ -173,7 +173,8 @@ def test_suspect_residues_are_flagged_rather_than_silently_estimated():
 def test_an_observed_fee_always_wins_over_the_model():
     """The model is a fallback, never an override. Ground truth is what Razorpay charged."""
     estimate = fee_for(251, observed_fee=7)
-    assert estimate.fee_paise == 7
+    assert estimate.gross_fee_paise == 7
+    assert estimate.base_fee_paise == 7 and estimate.tax_paise == 0
     assert estimate.source == "observed"
     assert estimate.confident is True
     assert base_fee_ceiling(251) == 6, "the model would have said 6, and would be wrong"
@@ -242,3 +243,95 @@ def test_no_additive_constant_rescues_the_rate_either():
         exact = Fraction(amount * RATE_NUM, RATE_DEN)
         lo, hi = max(lo, Fraction(_base(fee, tax) - 1) - exact), min(hi, Fraction(_base(fee, tax)) - exact)
     assert lo >= hi, f"fee = ceil(0.022*a + c) now fits with c in ({float(lo)}, {float(hi)}]"
+
+
+# ------------------------------------- the two bugs an external audit found
+
+
+def test_observed_and_modelled_fees_agree_on_what_net_means():
+    """INCIDENTS.md #15. `fee` was tax-inclusive on one path and tax-exclusive on the other.
+
+    The bug produced three different answers for one payment, and the wrong one
+    was off by exactly the GST — 990 paise on a single ₹2,499 transaction. A
+    cover built on it would miss by 990p and be reported as an unexplained
+    exception, which is the failure mode this project exists to prevent.
+
+    The type no longer permits it: `base_fee_paise` is tax-exclusive on every
+    path, and `net_settled_paise` is the only figure a cover is built from.
+    """
+    observed = fee_for(249_900, observed_fee=6488, observed_tax=990)
+    assert observed.base_fee_paise == 5498
+    assert observed.tax_paise == 990
+    assert observed.gross_fee_paise == 6488
+    assert observed.net_settled_paise == 249_900 - 6488 == 243_412
+
+    # The base is the base regardless of which path produced it.
+    modelled = fee_for(249_900)
+    assert modelled.base_fee_paise == observed.base_fee_paise
+
+    for amount, fee, tax in OBSERVATIONS:
+        e = fee_for(amount, observed_fee=fee, observed_tax=tax)
+        assert e.base_fee_paise == _base(fee, tax)
+        assert e.net_settled_paise == amount - fee, f"{amount}p"
+
+
+def test_a_zero_valued_candidate_makes_every_cover_ambiguous():
+    """INCIDENTS.md #14. The solver called a provably ambiguous problem UNIQUE.
+
+    A zero-valued entry can join or leave any cover without changing its sum, so
+    k zeros give every solution 2^k variants. The bitset DP is blind to it —
+    shifting by zero is the identity — so the solver reported the single cover
+    that omits every zero and called it unique, falsifying the guarantee the
+    whole project rests on.
+
+    `LedgerEntry.net` returns exactly 0 whenever debit == credit, so this was
+    reachable from real data, not just from a contrived fixture.
+    """
+    import itertools
+
+    from milaan.solver.subsetsum import Outcome as O
+    from milaan.solver.subsetsum import solve as _solve
+
+    for values, target in [
+        ([100, 0], 100), ([0], 0), ([5, 0, 5], 5), ([100, 0, 0], 100),
+        ([99, 0, -99], 0), ([7, 0], 9), ([100, 50], 100),
+    ]:
+        truth = [
+            c for k in range(len(values) + 1)
+            for c in itertools.combinations(range(len(values)), k)
+            if sum(values[i] for i in c) == target
+        ]
+        expected = O.NONE if not truth else (O.UNIQUE if len(truth) == 1 else O.AMBIGUOUS)
+        result = _solve(values, target)
+        assert result.outcome is expected, (
+            f"solve({values}, {target}) -> {result.outcome}, brute force finds "
+            f"{len(truth)} cover(s) so the answer is {expected}"
+        )
+        if result.outcome is O.AMBIGUOUS:
+            assert result.solution != result.second_solution
+            for cover in (result.solution, result.second_solution):
+                assert sum(values[i] for i in cover) == target
+
+
+def test_property_tests_now_generate_zeros():
+    """Why the bug survived: every random generator I wrote started at randint(1, ...).
+
+    A zero was never sampled, so 100+ property tests passed against a solver that
+    was wrong on the most common degenerate input in the real ledger. This test
+    exists so the corpus itself is checked, not just the solver.
+    """
+    import random
+
+    from milaan.solver.subsetsum import solve as _solve
+
+    rng = random.Random(77)
+    saw_zero = 0
+    for _ in range(400):
+        values = [rng.choice([0, 0, rng.randint(-500, 500)]) for _ in range(rng.randint(1, 7))]
+        saw_zero += any(v == 0 for v in values)
+        target = rng.randint(-200, 600)
+        result = _solve(values, target)
+        for cover in (result.solution, result.second_solution):
+            if cover:
+                assert sum(values[i] for i in cover) == target
+    assert saw_zero > 100, "the generator must actually produce zeros"

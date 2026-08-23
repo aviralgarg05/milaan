@@ -70,8 +70,8 @@ class Budget:
     """Hard limits. Exceeding one yields BUDGET_EXCEEDED, never a wrong answer."""
 
     max_items: int = 512
-    max_target_paise: int = 50_000_000  # ₹5,00,000 — a 6 MB bitset
-    max_bit_operations: int = 400_000_000
+    max_target_paise: int = 200_000_000  # ₹20,00,000 — a 25 MB bitset
+    max_bit_operations: int = 40_000_000_000
     """Rough proxy for work: items × target bits. Keeps a single line bounded."""
 
 
@@ -117,14 +117,44 @@ def solve(
             reason=f"{n} candidates exceeds max_items={budget.max_items}",
         )
 
-    # Empty target is satisfied by the empty set, and only by it if no non-empty
-    # subset also sums to zero. Zero-valued items make that non-trivial, so fall
-    # through to the general path rather than special-casing.
     if n == 0:
         return (
             SubsetSumResult(Outcome.UNIQUE, ())
             if target == 0
             else SubsetSumResult(Outcome.NONE, reason="no candidates")
+        )
+
+    # --- zero-valued candidates: always ambiguous, never silent -------------
+    #
+    # A zero-valued entry can be added to or removed from any cover without
+    # changing its sum, so k zeros multiply every solution into 2^k variants.
+    # The bitset DP cannot see this: shifting by zero is the identity, so
+    # `reachable | (reachable << 0)` is a no-op and a zero-weight item is never
+    # selected during reconstruction — the solver reports the one cover that
+    # omits every zero and calls it unique.
+    #
+    # This is not hypothetical. `LedgerEntry.net` returns exactly 0 for any row
+    # where debit == credit, which a fee-only adjustment or a fully-refunded
+    # payment produces. See INCIDENTS.md #14.
+    zero_indices = tuple(i for i, v in enumerate(values) if v == 0)
+    if zero_indices:
+        nonzero = [(i, v) for i, v in enumerate(values) if v != 0]
+        inner = solve(
+            [v for _, v in nonzero], target,
+            budget=budget, detect_ambiguity=detect_ambiguity,
+        )
+        if inner.outcome in (Outcome.NONE, Outcome.BUDGET_EXCEEDED):
+            return inner  # zeros cannot rescue an unreachable target
+        base = tuple(nonzero[i][0] for i in inner.solution)
+        return SubsetSumResult(
+            Outcome.AMBIGUOUS,
+            solution=base,
+            second_solution=tuple(sorted(base + (zero_indices[0],))),
+            reason=(
+                f"{len(zero_indices)} zero-valued candidate(s) present; every cover has "
+                f"2^{len(zero_indices)} equivalent variants that differ only by which "
+                "zero-valued entries are included"
+            ),
         )
 
     # --- shift signed problem to a non-negative one ------------------------
