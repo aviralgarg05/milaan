@@ -1,0 +1,68 @@
+{
+  "created_at": "2026-08-23T16:28:14.957306+00:00",
+  "purpose": "map the fractional-part region where the fee exceeds ceiling (INCIDENTS.md #12)",
+  "already_known": {
+    "251": "+1",
+    "10251": "+1",
+    "10249": "+0",
+    "10250": "+0"
+  },
+  "links": [
+    {
+      "amount_paise": 10341,
+      "frac": 0.502,
+      "role": "just above half \u2014 the narrowest test of the boundary",
+      "payment_link_id": "plink_TTHDW4tyLMGGBW",
+      "short_url": "https://rzp.io/rzp/uDw6PjG",
+      "predicted_ceiling": 228
+    },
+    {
+      "amount_paise": 10205,
+      "frac": 0.51,
+      "role": "sweep",
+      "payment_link_id": "plink_TTHDaMoQZ1jrtJ",
+      "short_url": "https://rzp.io/rzp/lDSMB0Ah",
+      "predicted_ceiling": 225
+    },
+    {
+      "amount_paise": 10070,
+      "frac": 0.54,
+      "role": "sweep",
+      "payment_link_id": "plink_TTHDeFMh0k7J3E",
+      "short_url": "https://rzp.io/rzp/fveEQ5dO",
+      "predicted_ceiling": 222
+    },
+    {
+      "amount_paise": 10480,
+      "frac": 0.56,
+      "role": "sweep \u2014 upper edge of the suspected zone",
+      "payment_link_id": "plink_TTHDiBhKrx4J0c",
+      "short_url": "https://rzp.io/rzp/gWzF6lz5",
+      "predicted_ceiling": 231
+    },
+    {
+      "amount_paise": 10300,
+      "frac": 0.6,
+      "role": "CONTROL: 71300p had .600 and matched ceiling exactly",
+      "payment_link_id": "plink_TTHDmFcOcY60tZ",
+      "short_url": "https://rzp.io/rzp/hTac3OW",
+      "predicted_ceiling": 227
+    },
+    {
+      "amount_paise": 10350,
+      "frac": 0.7,
+      "role": "CONTROL: expect +0",
+      "payment_link_id": "plink_TTHEuwe8blM9sb",
+      "short_url": "https://rzp.io/rzp/GY3pUIx",
+      "predicted_ceiling": 228
+    },
+    {
+      "amount_paise": 10450,
+      "frac": 0.9,
+      "role": "CONTROL: expect +0",
+      "payment_link_id": "plink_TTHEypYGdJ4uQu",
+      "short_url": "https://rzp.io/rzp/oacmjbM",
+      "predicted_ceiling": 230
+    }
+  ]
+}

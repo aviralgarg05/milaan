@@ -413,3 +413,53 @@ rather than the results table implying otherwise.
 class, or something else entirely needs a targeted follow-up batch — odd/even
 pairs bracketing the boundary at several magnitudes. Until then it is reported
 as unexplained, because it is.
+
+---
+
+### #13 — test mode caps payment links at 30, and that retroactively justifies the whole data plan
+
+**Date** 23 Aug · **Found by** `scripts/mint_followup.py` on its eighth link
+
+**Symptom.** The follow-up probe batch minted seven links and then stopped:
+
+```
+RATE_LIMIT_EXCEEDED · "test mode limit of 30 reached for payment_link"
+```
+
+**Cause.** Razorpay test mode enforces a **hard ceiling of 30 payment links per
+account**. Not a throttle — a cap. Twenty-nine had been created across the day's
+probes and two calibration batches, and the thirtieth was refused.
+
+**Note the contrast with #11.** That earlier limiter returned a plain
+`400 BAD_REQUEST_ERROR` whose description was `"Too many requests"` — no code, no
+`Retry-After`, indistinguishable from a malformed payload. This one returns a
+proper `RATE_LIMIT_EXCEEDED` with a message that names the resource and the
+number. Razorpay therefore has **two different rate-limiting behaviours on the
+same endpoint**, and only one of them is machine-readable. A harness that handled
+either one alone would misread the other: backing off forever against a hard cap,
+or giving up immediately against a soft throttle.
+
+**Why this is the most strategically useful finding of the day.** MILAAN's ground
+truth was already the sealed, seeded, hash-committed generator, with live
+Razorpay data positioned as a *second* results column if it ever materialised.
+That call was made on 21 August, before any of this was known.
+
+It now turns out that **three independent hard limits** would each, on their own,
+have made a large live-minted pool impossible:
+
+1. `GET /v1/settlements` is empty on an unactivated account, so Razorpay-authored
+   groupings do not exist to be harvested (probe E4).
+2. Checkout runs hCaptcha, so payments cannot be captured programmatically (#10).
+3. Payment links are capped at 30 per test account — this entry.
+
+A plan that had made "mint 300 real payments and let Razorpay's engine author the
+answer key" the spine would have discovered limit 3 somewhere around day six,
+with the solver already built against an assumption that could not hold. The
+sealed generator was not a fallback taken under duress; it was the primary
+choice, and each of these findings is a separate reason it was the right one.
+
+**What it costs.** The 30-link budget is now spent, so the fee-model corpus is
+frozen at 19 measured payments plus the 7 probes in flight — 26 total. That is
+enough to answer the rounding question and to map the anomaly's fractional
+neighbourhood, and it is not enough to characterise the discrete component fully.
+`LIMITS.md` states the sample size and stops there.

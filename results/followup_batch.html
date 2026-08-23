@@ -1,0 +1,20 @@
+<!doctype html><meta charset=utf-8>
+<title>MILAAN · fee anomaly follow-up</title>
+<style>body{font:15px/1.6 ui-sans-serif,system-ui;max-width:860px;margin:3rem auto;padding:0 1rem}
+li{margin:.6rem 0} a{font-variant-numeric:tabular-nums} span{color:#666;font-size:13px;margin-left:.6rem}
+code{background:#f4f4f5;padding:.1rem .3rem;border-radius:3px}
+@media(prefers-color-scheme:dark){body{background:#0b0b0c;color:#e7e7e9}span{color:#9b9ba1}code{background:#1c1c1f}}</style>
+<h1>Fee anomaly follow-up</h1>
+<p>Test mode. Visa <code>4100 2800 0000 1007</code>, any future expiry, any CVV,
+OTP any 4–10 digits.</p>
+<p>These map the fractional part <code>k/500</code> of the exact fee. Only
+<code>.522</code> has ever exceeded ceiling; these sweep <code>.502</code>–<code>.900</code>
+at constant magnitude, with three controls that should come back matching ceiling.</p>
+<ol><li><a href="https://rzp.io/rzp/uDw6PjG" target="_blank" rel="noopener"><b>₹103.41</b></a><span>frac <b>0.502</b> · ceiling predicts 228p · just above half — the narrowest test of the boundary</span></li>
+<li><a href="https://rzp.io/rzp/lDSMB0Ah" target="_blank" rel="noopener"><b>₹102.05</b></a><span>frac <b>0.510</b> · ceiling predicts 225p · sweep</span></li>
+<li><a href="https://rzp.io/rzp/fveEQ5dO" target="_blank" rel="noopener"><b>₹100.70</b></a><span>frac <b>0.540</b> · ceiling predicts 222p · sweep</span></li>
+<li><a href="https://rzp.io/rzp/gWzF6lz5" target="_blank" rel="noopener"><b>₹104.80</b></a><span>frac <b>0.560</b> · ceiling predicts 231p · sweep — upper edge of the suspected zone</span></li>
+<li><a href="https://rzp.io/rzp/hTac3OW" target="_blank" rel="noopener"><b>₹103.00</b></a><span>frac <b>0.600</b> · ceiling predicts 227p · CONTROL: 71300p had .600 and matched ceiling exactly</span></li>
+<li><a href="https://rzp.io/rzp/GY3pUIx" target="_blank" rel="noopener"><b>₹103.50</b></a><span>frac <b>0.700</b> · ceiling predicts 228p · CONTROL: expect +0</span></li>
+<li><a href="https://rzp.io/rzp/oacmjbM" target="_blank" rel="noopener"><b>₹104.50</b></a><span>frac <b>0.900</b> · ceiling predicts 230p · CONTROL: expect +0</span></li></ol>
+<p>Then: <code>uv run scripts/mint_followup.py --check</code></p>
