@@ -18,9 +18,9 @@ No API key. No Docker. No network. It reconciles 18 bank credits against 269
 ledger rows and prints:
 
 ```
-  MATCH RATE       50.0%  (9/18)
-  … on decidable credits        75.0%  (9/12)
-  CORRECTLY REFUSED 6/6  planted-undecidable credits where refusing IS the right answer
+  MATCH RATE       66.7%  (12/18)
+  … on decidable credits        80.0%  (12/15)
+  CORRECTLY REFUSED 3/3  planted-undecidable credits where refusing IS the right answer
 
   FALSE MATCHES    0   ← no wrong join was ever reported
 ```
@@ -30,10 +30,34 @@ guessing; a false-match count cannot. A wrong join produces a reconciliation
 report that balances, so nothing downstream ever catches it — which makes "how
 often were you confidently wrong" the only figure a finance reviewer needs.
 
-Six of the eighteen credits are *planted undecidable*: a member withheld from the
-export, identical amounts admitting several covers, a fee-only row netting to
-zero. Refusing those is the correct answer, and MILAAN refused all six. Full
+Three of the eighteen credits are *structurally* undecidable — a member withheld
+from the export, or a fee-only row netting to zero, which gives every cover 2^k
+variants. Refusing those is the correct answer and MILAAN refused all three. The
+other three refusals are genuine ambiguities it declined to guess at. Full
 caveats in [`LIMITS.md`](LIMITS.md).
+
+### The LLM layer contributes nothing here, and that is measured
+
+```bash
+uv run --with openpyxl --with-editable . python -m milaan.cli hints
+```
+
+Three configurations on the same batch: no hints, a **perfect** extractor, and a
+**hostile** one. The oracle reads the capture date with 100% accuracy, so no real
+model can beat it — its score is the *ceiling* on what any model could add.
+
+```
+  CEILING ON ANY MODEL         +0 credits
+  malign false-matches          0
+  malign accepted ⊆ baseline    True
+```
+
+The safety property is the cause: uniqueness is adjudicated on the full pool, so
+a hint can never break a genuine tie. The mechanism that makes the layer
+trustworthy is exactly what makes it useless on this workload. That is
+[incident #18](INCIDENTS.md), and the zero is published rather than engineered
+away — the only route to a positive number is weakening containment, which buys
+it with the wrong joins this project exists to prevent.
 
 The test suite is the other half of the argument:
 
@@ -164,10 +188,19 @@ labelled as mine — is in [`DATA.md`](DATA.md).
 ## What broke
 
 [`INCIDENTS.md`](INCIDENTS.md) — written as it happened, with commit hashes and
-the regression test that pins each one. Seven entries so far. Two of them are my
-own tests being wrong rather than my code, including one where I asserted a
-floating-point hazard that measurement showed **does not exist** at settlement
-scale, and said so instead of quietly deleting the test.
+the regression test that pins each one. **Twenty entries**, and the pattern in
+them is the point: six are cases where the thing that broke was my own
+conclusion rather than my code.
+
+A floating-point hazard I asserted without measuring, and that measurement showed
+**does not exist** (#6). A test that called a cover unique when the solver was
+right to call it ambiguous (#7). A solver that returned UNIQUE on a provably
+ambiguous input, which 100+ property tests missed because **no generator I wrote
+ever sampled a zero** (#14). A fee anomaly I proved was not a single rate, then
+stopped — it was two rates, and someone else found it (#16). A 0% first run that
+was the solver being correct and my architecture being wrong (#17). A test class
+named after an outcome its construction could not guarantee, which had been
+quietly grading the engine on a curve (#20).
 
 ## Status
 
@@ -179,16 +212,17 @@ scale, and said so instead of quietly deleting the test.
 | Signed subset-sum + uniqueness + budget | done, verified vs brute force |
 | Narration grammar | **done** |
 | LLM hint layer + containment property | **done**, 33 tests |
-| Interval layer | **done** — carries 13 of 18 credits |
+| Interval layer | **done** — carries 16 of 18 credits |
 | Sealed ground-truth generator | **done**, seed + SHA-256 committed |
 | Batch runner, match rate, exception list | **done** — `milaan run` |
+| Hint-layer A/B (none / perfect / hostile) | **done** — `milaan hints`, ceiling is +0 |
 | Anchor layer (UTR → settlement join) | **not built** — see LIMITS.md |
-| Perturbed-interval layer | **not built** — the WITH_REFUND residue |
-| Hint layer's *usefulness* measured in the batch | **not measured** |
+| Perturbed-interval layer | **not built** — diagnosed as the wrong fix, see #19 |
 | 5-minute pitch video | **not started** |
 
-The containment property of the hint layer is proved and tested; how often it
-converts an exception into a match is **not yet measured**. Those are two
-separate claims and only one currently has a number behind it.
+Both hint-layer claims now have numbers: containment holds under an adversary at
+every scale tested, and the usefulness ceiling is **+0**. They are reported as
+two separate figures because conflating them is how "we used AI" comes to mean
+nothing.
 
 Licence: MIT.

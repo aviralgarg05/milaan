@@ -47,7 +47,7 @@ import hashlib
 import json
 import random
 from dataclasses import asdict, dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from ..fees import base_fee_two_component
 
@@ -58,7 +58,7 @@ __all__ = ["Batch", "generate", "PLANTED", "batch_hash"]
 PLANTED = {
     "CLEAN": "an ordinary settlement whose members are all present and distinct",
     "WITH_REFUND": "a refund nets against payments inside the settlement",
-    "AMBIGUOUS_COVER": "identical amounts admit more than one exact cover",
+    "IDENTICAL_AMOUNTS": "many equal amounts — ambiguity is likely but not guaranteed",
     "OUT_OF_WINDOW": "a member falls outside the exported ledger window",
     "ZERO_NET": "a member nets to exactly zero (fee-only adjustment)",
     "ON_HOLD": "a member was withheld and settles in a later batch",
@@ -96,6 +96,10 @@ class LedgerRow:
     captured_on: str
     settlement_id: str | None  # the withheld answer key
     on_hold: bool = False
+    captured_at: str = ""
+    """Full capture timestamp. Real ledgers carry one and settlement grouping
+    follows it; a date alone is not enough to order rows within a day, and two
+    settlements can share a date (INCIDENTS.md #19)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,52 +185,72 @@ def generate(seed: int = 20260823, *, settlements: int = 18,
     n = 0
 
     # Deterministic class schedule — every class appears, ordinary cases dominate.
-    schedule = (["CLEAN"] * 7 + ["WITH_REFUND"] * 4 + ["AMBIGUOUS_COVER"] * 3
+    schedule = (["CLEAN"] * 7 + ["WITH_REFUND"] * 4 + ["IDENTICAL_AMOUNTS"] * 3
                 + ["OUT_OF_WINDOW"] * 2 + ["ZERO_NET"] * 1 + ["ON_HOLD"] * 1)
     schedule = (schedule * ((settlements // len(schedule)) + 1))[:settlements]
 
     for s_index, planted in enumerate(schedule):
         sid = f"setl_GEN{s_index:04d}"
         captured = start + timedelta(days=s_index // 2)
+        # Two settlements share each capture date, as a real merchant's can.
+        # They are separated in time, not by id, so the ledger's own ordering
+        # keeps each settlement's rows together.
+        clock = datetime.combine(captured, time(9 if s_index % 2 == 0 else 14, 0))
         value_date = _settles_on(captured)
         members: list[LedgerRow] = []
 
-        if planted == "AMBIGUOUS_COVER":
-            # Identical amounts: any k of them sum the same way. This is the
-            # realistic case for a subscription merchant, not a contrivance —
+        if planted == "IDENTICAL_AMOUNTS":
+            # Many equal amounts — the realistic subscription-merchant case, and
             # Razorpay's own published sample is five identical 99p payments.
+            #
+            # Note this plants a *condition*, not an outcome. Equal amounts make
+            # ambiguity likely but do not guarantee it: if a credit covers ALL of
+            # them, "all of them" is a unique set and the correct verdict is
+            # MATCHED. An earlier version of this file named the class
+            # AMBIGUOUS_COVER and so asserted an outcome the construction cannot
+            # deliver — INCIDENTS.md #20.
             amount = rng.choice([9900, 29900, 49900, 99900])
             for _ in range(rng.randint(4, 7)):
                 n += 1
+                clock += timedelta(seconds=rng.randint(20, 400))
                 members.append(LedgerRow(f"pay_G{n:05d}", "payment", amount,
-                                         captured.isoformat(), sid))
+                                         captured.isoformat(), sid,
+                                         captured_at=clock.isoformat()))
         else:
             for _ in range(rng.randint(6, 22)):
                 n += 1
+                clock += timedelta(seconds=rng.randint(20, 400))
                 members.append(LedgerRow(
                     f"pay_G{n:05d}", "payment",
-                    rng.randint(4900, 500000), captured.isoformat(), sid))
+                    rng.randint(4900, 500000), captured.isoformat(), sid,
+                    captured_at=clock.isoformat()))
 
         if planted == "WITH_REFUND":
             for _ in range(rng.randint(1, 3)):
                 n += 1
+                clock += timedelta(seconds=rng.randint(20, 400))
                 members.append(LedgerRow(f"rfnd_G{n:05d}", "refund",
                                          -rng.randint(4900, 200000),
-                                         captured.isoformat(), sid))
+                                         captured.isoformat(), sid,
+                                         captured_at=clock.isoformat()))
 
         if planted == "ZERO_NET":
             # A fee-only adjustment: debit == credit, so net is exactly zero.
             # This is the input class that silently broke the solver (#14) and
             # it is planted so the scorecard has to face it every run.
             n += 1
+            clock += timedelta(seconds=rng.randint(20, 400))
             members.append(LedgerRow(f"adj_G{n:05d}", "adjustment", 0,
-                                     captured.isoformat(), sid))
+                                     captured.isoformat(), sid,
+                                     captured_at=clock.isoformat()))
 
         if planted == "ON_HOLD":
             n += 1
+            clock += timedelta(seconds=rng.randint(20, 400))
             members.append(LedgerRow(f"pay_G{n:05d}", "payment",
                                      rng.randint(4900, 200000),
-                                     captured.isoformat(), sid, on_hold=True))
+                                     captured.isoformat(), sid, on_hold=True,
+                                     captured_at=clock.isoformat()))
 
         # Razorpay deducts the fee per transaction; the credit is the net.
         settling = [m for m in members if not m.on_hold]

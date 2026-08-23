@@ -780,3 +780,88 @@ tool in the right place, and where you chose not to use one*. The strongest form
 of that is not an argument about where an LLM does not belong — it is having
 built the thing, measured its ceiling honestly, found it to be zero, and
 published the zero. The negative result is the finding.
+
+---
+
+### #19 — sorting by id, not by time, silently broke the interval layer
+
+**Date** 24 Aug · **Fixed by** a capture timestamp on every ledger row · **Pinned by** `test_headline_figures_are_what_the_submission_reports`
+
+**Symptom.** Three of four `WITH_REFUND` credits were refused. Not wrong —
+refused — but they should have been findable.
+
+**Diagnosis before building.** The obvious next move was a perturbed-interval
+layer (a contiguous run minus a bounded set of exclusions). I checked first
+whether the true member set was contiguous at all, and it was not:
+
+```
+cr_0007  members=20  true-set contiguous=True   intervals found=1  true cover among them=True
+cr_0008  members=18  true-set contiguous=False  intervals found=0  true cover among them=False
+cr_0009  members=23  true-set contiguous=False  intervals found=0  true cover among them=False
+cr_0010  members=20  true-set contiguous=False  intervals found=0  true cover among them=False
+```
+
+Building perturbation would have been wrong: it *adds* candidate covers, so it
+would have made ambiguity worse while leaving the real cause untouched.
+
+**Cause.** I sorted the candidate pool by `(day_offset, entity_id)`. Two
+settlements share each capture date, and ids are typed: `pay_G…` sorts before
+`rfnd_G…`. So the first settlement's **refunds** sorted after the second
+settlement's **payments**, interleaving two settlements and destroying
+contiguity for any settlement containing a refund.
+
+**Fix, and it is a domain fact rather than a trick.** Real ledger rows carry a
+capture *timestamp*, not just a date, and settlement grouping follows it. Rows
+now carry `captured_at` and the pool is ordered by it. A date alone cannot order
+rows within a day, and two settlements can share a day.
+
+**Result:** decidable match rate 75% → **80%**, `WITH_REFUND` 1/4 → **4/4**,
+interval layer 13 → 16 of 18, throughput 25 → 79 credits/sec. False matches
+stayed at zero throughout.
+
+**The lesson is the diagnosis, not the fix.** The plan said "build the
+perturbed-interval layer" and the plan was wrong. Ten minutes of asking *why*
+the layer failed replaced a day of building the wrong thing — and would have
+produced a worse number.
+
+---
+
+### #20 — I named a test class after an outcome the construction cannot guarantee
+
+**Date** 24 Aug · **Pinned by** `test_every_planted_undecidable_credit_is_refused_not_guessed`
+
+**Symptom.** After the #19 fix, a credit planted as `AMBIGUOUS_COVER` came back
+`MATCHED`, and the scorecard read `CORRECTLY REFUSED 5/6`. My first reading was
+that the engine had got lucky on an undecidable input.
+
+**Cause.** It had not. `cr_0012` is seven identical ₹999 payments and the credit
+is the sum of **all seven** — and "all of them" is a unique set. Equal amounts
+only create ambiguity when the target is a *proper* subset. The generator was
+planting a **condition** (many equal amounts) and I had named the class after an
+**outcome** (ambiguous), so the label asserted something the construction could
+not deliver, and a correct answer was scored as a failure.
+
+**Fix.** The class is now `IDENTICAL_AMOUNTS`, described as "ambiguity is likely
+but not guaranteed". Separately, the scorecard's undecidable denominator is
+restricted to classes where undecidability is **structural** — `OUT_OF_WINDOW`
+(a member is missing, so no cover is findable) and `ZERO_NET` (a zero gives
+every cover 2^k variants). `IDENTICAL_AMOUNTS` and `ON_HOLD` are
+decidable-in-principle and are now held to the same standard as any other
+credit, which *lowers* the reported rate from 91.7% to 80.0%.
+
+**Why I took the lower number.** The 91.7% was flattering and wrong: it counted
+three genuinely-refused credits as "correctly refused" when nothing guaranteed
+they were unrefusable. A denominator that excuses whatever the engine failed at
+is not a measurement. This is the same discipline as #12 — the risk in a
+self-authored corpus is not usually fabricated data, it is a label that quietly
+grades the engine on a curve.
+
+**Addendum, 24 Aug (after #19).** Re-measured once capture-time ordering landed.
+The interval layer now resolves 16 of 18 credits, so only two reach the blind
+layer — and neither carries an opaque narration. **The hint layer is no longer
+merely unhelpful on this batch; it is never invoked.** The ceiling was +0 when it
+was offered 1–4 lines, and it is +0 now because it is offered none. Both facts
+are asserted separately in `tests/test_hints_ab.py`, because "the ceiling is
+zero" and "the layer is unreachable" are different claims and a future change
+could move either. The adversarial half is still measured on a larger batch,
+where the layer is reachable, and containment still holds there.

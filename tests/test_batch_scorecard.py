@@ -44,22 +44,31 @@ def test_no_wrong_join_is_ever_reported():
 def test_headline_figures_are_what_the_submission_reports():
     score = run_batch(generate(), verbose=False)
     assert score["total_credits"] == 18
-    assert score["total_ledger_rows"] == 271
-    assert score["matched"] == 9
-    assert score["decidable_credits"] == 12
-    assert abs(score["match_rate_decidable"] - 0.75) < 1e-9
-    assert score["correctly_refused"] == score["undecidable_credits"] == 6
+    assert score["total_ledger_rows"] == 237
+    assert score["matched"] == 12
+    assert score["decidable_credits"] == 15
+    assert abs(score["match_rate_decidable"] - 0.80) < 1e-9
+    assert score["correctly_refused"] == score["undecidable_credits"] == 3
 
 
 def test_every_planted_undecidable_credit_is_refused_not_guessed():
     """Refusing is the correct answer for these, and being right must not look like a miss."""
     score = run_batch(generate(), verbose=False)
-    for cls in ("AMBIGUOUS_COVER", "ZERO_NET", "OUT_OF_WINDOW"):
+    # Only the structurally-undecidable classes. IDENTICAL_AMOUNTS is a planted
+    # *condition*, not a planted outcome, and a MATCHED there can be correct —
+    # see INCIDENTS.md #20.
+    for cls in ("ZERO_NET", "OUT_OF_WINDOW"):
         outcomes = score["by_planted_class"][cls]
         assert "MATCHED" not in outcomes, (
             f"{cls} is undecidable by construction; a MATCHED here would be luck"
         )
         assert "FALSE_MATCH" not in outcomes
+
+
+def test_every_with_refund_credit_resolves():
+    """INCIDENTS.md #19: ordering by capture time took this class from 1/4 to 4/4."""
+    score = run_batch(generate(), verbose=False)
+    assert score["by_planted_class"]["WITH_REFUND"] == {"MATCHED": 4}
 
 
 def test_the_interval_layer_carries_most_of_the_load():

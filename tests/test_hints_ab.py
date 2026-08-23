@@ -31,12 +31,28 @@ def ab():
 
 
 def test_a_perfect_extractor_adds_nothing_and_that_is_the_finding(ab):
-    """The ceiling on any model's contribution to this workload is zero."""
+    """The ceiling on any model's contribution to this workload is zero.
+
+    Stronger than when first measured. After the capture-time ordering fix
+    (INCIDENTS.md #19) only two credits reach the blind layer at all, and
+    neither carries an opaque narration — so the hint layer is not merely
+    unhelpful here, it is **never invoked**. Both facts are asserted, because
+    "the ceiling is zero" and "the layer is unreachable" are different findings
+    and a future change could move either one.
+    """
     assert ab["O"]["matched"] == ab["N"]["matched"], (
         "if the oracle now helps, the interval layer or the budget changed — "
         "re-derive INCIDENTS.md #18 rather than quietly banking the improvement"
     )
-    assert ab["O"]["hints_offered"] > 0, "the oracle must actually be offering hints"
+    assert ab["O"]["hints_offered"] == 0, (
+        "the hint layer is currently unreachable on this batch; if it is being "
+        "offered lines again, the residue reaching the blind layer has changed"
+    )
+    assert ab["N"]["opaque_narrations"] > 0, (
+        "opaque narrations must still exist in the batch — the layer is "
+        "unreachable because the interval layer resolves them first, not "
+        "because the corpus stopped containing hard narrations"
+    )
 
 
 def test_a_hostile_extractor_cannot_cause_a_wrong_join(ab):
@@ -48,11 +64,15 @@ def test_a_hostile_extractor_cannot_cause_a_wrong_join(ab):
 
 
 def test_grounding_rejects_every_hallucinated_claim(ab):
-    """The malign proposer invents a UTR and a counterparty on every call."""
-    assert ab["M"]["hint_claims_rejected"] >= 2 * ab["M"]["hints_offered"], (
-        "each malign hint carries at least a bogus reference and counterparty"
+    """Measured where the layer IS reachable — a larger batch still exercises it."""
+    big = generate(settlements=40)
+    m = run_batch(big, verbose=False, proposer=MalignProposer())
+    assert m["hints_offered"] > 0, "a larger batch should still reach the hint layer"
+    assert m["hint_claims_rejected"] >= 2 * m["hints_offered"], (
+        "each malign hint carries at least a bogus reference and counterparty, "
+        "and grounding must drop both before they reach the solver"
     )
-    assert ab["O"]["hint_claims_rejected"] == 0, "the oracle never hallucinates"
+    assert m["false_matches"] == 0
 
 
 def test_the_result_holds_at_larger_scale(ab):

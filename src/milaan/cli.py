@@ -71,6 +71,7 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
                 entity_id=r.entity_id,
                 net_paise=_settling_value(r.net_paise),
                 day_offset=abs((date.fromisoformat(r.captured_on) - vd).days),
+                reference=r.captured_at,      # capture timestamp, the ordering key
             )
             for r in ledger
             if abs((date.fromisoformat(r.captured_on) - vd).days) <= WINDOW_DAYS
@@ -83,7 +84,10 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
         # LAYER 1 — interval. Settlements batch by capture time, so a cover is
         # almost always a contiguous run in capture order. Linear, and specific
         # enough that a collision is informative rather than inevitable.
-        ordered = sorted(pool, key=lambda c: (c.day_offset, c.entity_id))
+        # Capture time is the ordering a settlement actually follows. Sorting by
+        # id instead put one settlement's refunds after the next settlement's
+        # payments and broke contiguity — INCIDENTS.md #19.
+        ordered = sorted(pool, key=lambda c: (c.reference or "", c.entity_id))
         iv = find_intervals([c.net_paise for c in ordered], credit.amount_paise)
 
         layer = "interval"
@@ -157,7 +161,12 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
     # and a zero-net member makes every cover non-unique. Counting those as
     # misses would penalise the engine for being right, so they are reported
     # separately rather than folded into either number.
-    UNDECIDABLE = ("OUT_OF_WINDOW", "AMBIGUOUS_COVER", "ZERO_NET")
+    # Only classes where undecidability is STRUCTURAL — provable from the
+    # construction rather than likely given the pool. A withheld member means no
+    # cover is findable; a zero-net member means every cover has 2^k variants.
+    # IDENTICAL_AMOUNTS and ON_HOLD are decidable-in-principle and are held to
+    # the same standard as any other credit (INCIDENTS.md #20).
+    UNDECIDABLE = ("OUT_OF_WINDOW", "ZERO_NET")
     decidable = [r for r in rows if r["planted"] not in UNDECIDABLE]
     undecidable = [r for r in rows if r["planted"] in UNDECIDABLE]
     correctly_refused = sum(
