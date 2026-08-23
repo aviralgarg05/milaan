@@ -79,16 +79,24 @@ The anchor layer (UTR in a narration → settlement id) has a working grammar bu
 no join, because the generator does not link a narration's UTR to its
 settlement — doing so would hand the solver the answer through the front door.
 On real data this layer would resolve most credits before any search runs, and
-its absence is why the interval layer carries 13 of 18 here.
+its absence is why the interval layer carries 16 of 18 here.
 
-Perturbed-interval matching (a contiguous run minus held items plus carry-ins)
-is not built. It is the most likely fix for the `WITH_REFUND` residue, where 3
-of 4 credits are currently refused.
+Perturbed-interval matching is not built, and was diagnosed as the *wrong* fix
+for the `WITH_REFUND` residue — that residue was an ordering bug, now fixed, and
+those credits are 4/4 (INCIDENTS.md #19). Perturbation adds candidate covers and
+would make ambiguity worse.
 
 ## Where the LLM is, and what it is worth
 
-The hint layer ships with its containment property proved and tested, but the
-batch does not yet report how often it converts an exception into a match. Until
-it does, the honest statement is that the **safety** property is demonstrated
-and the **usefulness** is not yet measured. The two are separate claims and only
-one of them is currently backed by a number.
+Both claims are now measured. **Usefulness: +0** — `milaan hints` runs the batch
+against a perfect extractor and a hostile one; the perfect one adds nothing
+because after the capture-time fix only two credits reach the layer at all and
+neither has an opaque narration. **Safety: soundness holds unconditionally**
+(every accepted cover is exact); the subset property holds except under
+`BUDGET_EXCEEDED`, which is documented rather than glossed (INCIDENTS.md #22).
+
+**The layer is an optional extra and the core does not depend on it.** `anthropic`
+is not a base dependency; `pip install -e ".[hints]"` is required to exercise it
+against a model, and it has never been run against one — there is no API key in
+this project. Its behaviour is characterised entirely by the oracle and malign
+stand-ins.

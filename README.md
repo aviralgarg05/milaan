@@ -22,7 +22,7 @@ Razorpay AI Buildathon 2026 · **Track 04 — AI Finance Controller**
 uv run --with openpyxl --with-editable . python -m milaan.cli run
 ```
 
-No API key. No Docker. No network. It reconciles 18 bank credits against 269
+No API key. No Docker. No network. It reconciles 18 bank credits against 237
 ledger rows and prints:
 
 ```
@@ -126,13 +126,12 @@ the solver is layered, cheapest first:
 | Layer | Method | Cost | Status |
 |---|---|---|---|
 | **Anchor** | UTR in the narration → settlement id. No search. | O(1) | grammar ships; join not built |
-| **Interval** | Prefix sums over time-ordered candidates. | O(n) | **not built** |
-| **Perturbed interval** | Interval ± a bounded set of exclusions/carry-ins. | bounded | **not built** |
+| **Interval** | Prefix sums over capture-time-ordered candidates. | O(n) | **ships** — resolves 16 of 18 |
+| **Perturbed interval** | Interval ± a bounded set of exclusions/carry-ins. | bounded | not built — diagnosed as the wrong fix (#19) |
 | **Blind cover** | Signed subset-sum, bitset DP over paise. | pseudo-poly | **ships** |
 
-Only the blind-cover layer and the narration grammar exist today. The cheap
-layers above it are the plan, not the product, and this table says so rather
-than describing them in the present tense.
+The interval layer and the blind solver ship. The anchor join and
+perturbed-interval do not — see the status table below and `LIMITS.md`.
 
 Refunds subtract, so the blind layer shifts the signed problem to a non-negative
 one using
@@ -216,7 +215,7 @@ labelled as mine — is in [`DATA.md`](DATA.md).
 ## What broke
 
 [`INCIDENTS.md`](INCIDENTS.md) — written as it happened, with commit hashes and
-the regression test that pins each one. **Twenty entries**, and the pattern in
+the regression test that pins each one. **Twenty-one entries**, and the pattern in
 them is the point: six are cases where the thing that broke was my own
 conclusion rather than my code.
 

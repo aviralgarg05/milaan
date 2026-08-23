@@ -1,17 +1,31 @@
 """The containment guarantee: an LLM can reduce exceptions, never cause a wrong join.
 
 This is the load-bearing module of MILAAN's AI-judgment argument, and it is
-about twenty lines of actual logic. The claim it makes is:
+about twenty lines of actual logic. There are TWO claims here and they are not the same strength. An earlier version
+of this docstring stated only the second and stated it too broadly, which made it
+false — see INCIDENTS.md #22.
 
-    For ANY output the model produces — including deliberately hallucinated
-    output, injected instructions, or adversarial garbage — the set of covers
-    MILAAN accepts is a SUBSET of the covers it would accept with no model at
-    all.
+**SOUNDNESS — holds unconditionally, and it is the one that matters.**
 
-The model can therefore only ever turn a `NO_COVER` or a `BUDGET_EXCEEDED` into
-a `MATCHED`. It cannot turn a `NO_COVER` into a wrong `MATCHED`, and it cannot
-turn an `AMBIGUOUS_COVER` into a `MATCHED`. That is proved by construction, in
-three steps, and asserted in `tests/test_hint_containment.py`.
+    For ANY output the model produces — hallucinated, injected, adversarial, or
+    from a fully compromised model — every cover MILAAN accepts sums to the
+    target exactly. **A hint can never cause a wrong join.**
+
+**SUBSET — holds except in one named case.**
+
+    Accepted-with-hint is a subset of accepted-without-hint, EXCEPT when the
+    unhinted problem was `BUDGET_EXCEEDED`.
+
+That exception is real and deliberate: when the full pool is too large to decide,
+a hint may narrow it to something decidable and MILAAN then accepts a cover it
+would otherwise have left unresolved. The transition is always
+**undecided → decided**, never *decided-one-way → decided-the-other*. A hint
+cannot flip `AMBIGUOUS` to `MATCHED`, cannot flip `NONE` to `MATCHED`, and cannot
+change which cover is returned when the unhinted problem was decidable.
+
+So the honest summary is: a hint can rescue a line the solver gave up on, and can
+do nothing else. Both claims are asserted separately in
+`tests/test_hint_containment.py`.
 
 **Step 1 — grounding.** Every string a hint claims must appear verbatim in the
 narration. A model that invents `UTR HDFCN52026081234567` for a narration that
@@ -23,7 +37,9 @@ predicate over candidates and applied with a set intersection. The hinted pool
 is a subset of the full pool by construction — there is no code path that adds
 a candidate, because the only operation available is a filter.
 
-**Step 3 — uniqueness is decided on the FULL pool, never the hinted one.**
+**Step 3 — uniqueness is decided on the FULL pool, never the hinted one** (except
+under `BUDGET_EXCEEDED`, where the full pool has no decidable answer to defer to
+and the weaker claim is recorded in the result's `reason`).
 This is the subtle step and the one that makes the whole thing work. Narrowing a
 pool can *manufacture* uniqueness: if the full pool has two exact covers and a
 hint removes one, solving the hinted pool alone would report `MATCHED` where the

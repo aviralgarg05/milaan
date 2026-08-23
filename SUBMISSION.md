@@ -54,7 +54,7 @@ That zero is published rather than engineered away.
 
 *(the field Razorpay says they read first)*
 
-Twenty entries in `INCIDENTS.md`, written as they happened with commit hashes and
+Twenty-one entries in `INCIDENTS.md`, written as they happened with commit hashes and
 the regression test that pins each. **Six of them are cases where the thing that
 broke was my own conclusion rather than my code.** Those are the ones worth your
 time.

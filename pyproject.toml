@@ -11,6 +11,12 @@ dependencies = [
 milaan = "milaan.cli:main"
 
 [project.optional-dependencies]
+hints = [
+    # The narration-hint layer. Optional on purpose: its measured contribution on
+    # the shipped batch is +0 (INCIDENTS.md #18), so the core reconciler must not
+    # depend on it. `pip install -e ".[hints]"` to exercise it against a model.
+    "anthropic>=0.40",
+]
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",

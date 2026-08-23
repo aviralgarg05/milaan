@@ -933,3 +933,59 @@ and it is the second time an outside reading has caught something I could not se
 from inside (the first being #16, the fee model). The pattern is consistent
 enough to be worth naming: I am reliable at measuring things and unreliable at
 auditing my own claims about the measurements.
+
+---
+
+### #22 — my central safety property was false as stated, and I had a test celebrating the counterexample
+
+**Date** 24 Aug · **Found by** an adversarial verification pass · **Pinned by** `test_the_one_case_where_a_hint_expands_the_accepted_set`
+
+**The claim, as it stood in three files and the pitch:**
+
+> For ANY output the model produces, the set of covers MILAAN accepts is a
+> SUBSET of the covers it would accept with no model at all.
+
+**It is false**, and here is the counterexample the audit produced in six lines:
+
+```
+accepted WITHOUT hint: 0   []
+accepted WITH hint   : 1   [('p0','p1','p2','p3')]
+subset property holds: False
+```
+
+**Cause.** `resolve()` has a `BUDGET_EXCEEDED` branch: when the full pool is too
+large to decide, a hint may narrow it to something decidable, and MILAAN then
+accepts a cover it would otherwise have left unresolved. That is by design and it
+is the layer's only value — but it is precisely a case where accepted-with is
+**not** a subset of accepted-without.
+
+**The part that stings.** I wrote a test for this exact behaviour —
+`test_a_hint_can_rescue_a_line_the_solver_declined_to_decide` — and its docstring
+called it *"the upside case … the entire value the model adds"*. I had the
+counterexample to my own headline property, in the same test file, celebrating
+it, and did not connect the two. Thirty-three containment tests passed around it
+because none of them ran under a budget tight enough to trigger the branch.
+
+**Fix — split one over-broad claim into two accurate ones.**
+
+- **Soundness, unconditional:** every accepted cover sums to the target exactly.
+  A hint can never cause a wrong join. *This is the claim the product rests on
+  and it was never in doubt.*
+- **Subset, on decidable problems:** accepted-with ⊆ accepted-without, except
+  under `BUDGET_EXCEEDED`. The transition there is always **undecided → decided**,
+  never *one answer → a different answer*.
+
+Both are now asserted separately, the exception has its own named test, and a new
+test checks soundness specifically under the budget-rescue path where subset
+fails.
+
+**Why the weaker statement is still worth having.** "A hint can rescue a line the
+solver gave up on, and can do nothing else" is a precise description of a bounded
+blast radius. The over-broad version was not stronger — it was wrong, and a
+reviewer who found the counterexample would have had cause to doubt every other
+property claim in the repo.
+
+**Same audit, same day, same shape as #21.** The code did what it should. The
+sentence describing it claimed more than the code delivered. That is now six
+entries in this log where my own words were the defect, against fifteen where the
+code was — and the words fail in the flattering direction every time.

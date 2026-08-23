@@ -1,14 +1,18 @@
-"""The containment property: an LLM cannot cause a wrong join. Proved, not asserted.
+"""The containment properties: an LLM cannot cause a wrong join.
 
-This is the test the pitch video points at. The claim is:
+Two claims of different strength — see INCIDENTS.md #22 for why they are stated
+separately now and were not before.
 
-    For ANY model output — hallucinated references, injected instructions,
-    adversarial garbage, a model that has been fully compromised — the set of
-    covers MILAAN accepts is a SUBSET of the set it would accept with no model
-    involved at all.
+**SOUNDNESS, unconditional.** For ANY model output — hallucinated, injected,
+adversarial, fully compromised — every accepted cover sums to the target exactly.
+A hint can never cause a wrong join.
 
-Everything below either exercises that property directly over randomised
-adversarial hints, or pins one of the three mechanisms that make it true:
+**SUBSET, on decidable problems.** Accepted-with-hint is a subset of
+accepted-without, except when the unhinted problem was BUDGET_EXCEEDED. That
+exception is real, deliberate, and asserted in its own test rather than hidden.
+
+Everything below either exercises those directly over randomised adversarial
+hints, or pins one of the three mechanisms behind them:
 grounding (claims must be literal substrings), filtering (hints can only remove
 candidates), and full-pool adjudication (uniqueness is never decided on a
 narrowed pool).
@@ -73,7 +77,14 @@ ADVERSARIAL_HINTS = [
 
 @pytest.mark.parametrize("hint", ADVERSARIAL_HINTS)
 def test_no_hint_can_expand_the_accepted_cover_set(hint):
-    """THE PROPERTY. Accepted-with-hint is always a subset of accepted-without."""
+    """SUBSET, on decidable problems. See INCIDENTS.md #22 for the exception.
+
+    This holds whenever the unhinted problem was decidable. The one case where it
+    does not — a BUDGET_EXCEEDED full pool that a hint narrows into decidability
+    — is asserted separately in
+    `test_the_one_case_where_a_hint_expands_the_accepted_set`. The default budget
+    is used here, under which none of these small pools is ever declined.
+    """
     rng = random.Random(11)
     for _ in range(60):
         amounts = [rng.randint(1, 4_000) * rng.choice([1, 1, 1, -1]) for _ in range(rng.randint(2, 9))]
@@ -222,12 +233,22 @@ def test_injection_inside_the_narration_itself_changes_nothing():
 # ------------------------------------------------------------ what a hint CAN do
 
 
-def test_a_hint_can_rescue_a_line_the_solver_declined_to_decide():
-    """The upside case: a budget-exceeded line becomes decidable once narrowed.
+def test_the_one_case_where_a_hint_expands_the_accepted_set():
+    """The named exception to the subset property, asserted rather than hidden.
 
-    This is the entire value the model adds, and it is bounded to exactly this:
-    turning an undecided line into a decided one, never a wrong one into a right
-    one or a right one into a wrong one.
+    When the full pool is BUDGET_EXCEEDED the solver has no answer to defer to,
+    so a hint that narrows it into decidability produces a cover MILAAN would not
+    otherwise have accepted — accepted-with is NOT a subset of accepted-without
+    here. That is the entire value the layer adds and the entire cost of it.
+
+    What is still guaranteed: the cover is arithmetically exact (soundness never
+    weakens), the transition is undecided → decided rather than one answer →
+    another, and the weaker uniqueness claim is recorded in `reason` so a reader
+    can see it was made.
+
+    An earlier version of this test celebrated this behaviour as "the upside
+    case" without noticing it contradicts the subset property claimed three
+    files away. INCIDENTS.md #22.
     """
     from milaan.solver.subsetsum import Budget
 
@@ -247,6 +268,19 @@ def test_a_hint_can_rescue_a_line_the_solver_declined_to_decide():
                       hint=ground(Hint(date_window_days=1), NARRATION), budget=tiny)
     assert rescued.outcome is Outcome.UNIQUE
     assert rescued.used_hint is True
+
+    # The expansion, stated explicitly rather than left implicit.
+    from milaan.hints.grounding import accepted_cover_ids
+    without = accepted_cover_ids(candidates, target, budget=tiny)
+    with_hint = accepted_cover_ids(candidates, target,
+                                   hint=ground(Hint(date_window_days=1), NARRATION),
+                                   budget=tiny)
+    assert without == frozenset(), "the unhinted problem must be undecided"
+    assert len(with_hint) == 1, "the hint must make it decidable"
+    assert not (with_hint <= without), (
+        "this is the documented exception to the subset property — if it ever "
+        "starts holding here, the BUDGET_EXCEEDED rescue branch was removed"
+    )
     by_id = {c.entity_id: c.net_paise for c in candidates}
     assert sum(by_id[e] for e in rescued.cover) == target
     assert "narrowed pool only" in rescued.reason, "the weaker claim must be recorded"
@@ -275,3 +309,27 @@ def test_hint_filtering_only_ever_shrinks_the_pool():
         narrowed = _filter(candidates, g)
         assert len(narrowed) <= len(candidates)
         assert set(id(c) for c in narrowed) <= set(id(c) for c in candidates)
+
+
+def test_soundness_never_weakens_even_under_the_budget_exception(hint=None):
+    """The claim that holds unconditionally: no accepted cover is ever inexact.
+
+    Soundness is the property the product actually rests on. The subset property
+    is a nice-to-have that documents the layer's blast radius; soundness is what
+    guarantees a hint cannot cause a wrong join. It is asserted here under the
+    budget-rescue path specifically, since that is where subset fails.
+    """
+    from milaan.solver.subsetsum import Budget
+
+    rng = random.Random(404)
+    for _ in range(40):
+        cands = [Candidate(f"p{i}", rng.randint(5_000, 90_000),
+                           day_offset=0 if i < 6 else 25) for i in range(50)]
+        target = sum(c.net_paise for c in cands[:3])
+        r = resolve(cands, target, hint=ground(Hint(date_window_days=1), NARRATION),
+                    budget=Budget(max_items=8))
+        if r.cover:
+            by_id = {c.entity_id: c.net_paise for c in cands}
+            assert sum(by_id[e] for e in r.cover) == target, (
+                "a hinted cover was accepted that does not sum to the target"
+            )
