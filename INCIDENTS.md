@@ -175,3 +175,39 @@ implementation and then actually believe it.
 **Fix.** The test uses distinct amounts and asserts `second_solution == ()`. The
 ambiguous case moved to its own test, where it is the point rather than an
 accident.
+
+---
+
+### #8 — `GET /orders` is eventually consistent, and a minting harness will believe it
+
+**Date** 23 Aug · **Found by** `scripts/check_keys.py` write probe
+
+**Symptom.** Created `order_TTGXsvW1pVeluE`, got a `200` with the order body
+back, then immediately listed `GET /v1/orders?count=3` — **0 items**. The order
+appeared to have vanished the instant after it was created.
+
+**Cause.** Not vanished, not indexed. Fetching the same order by id returned it
+immediately and correctly; only the *list* endpoint lagged, by roughly a second.
+Razorpay's collection endpoints are eventually consistent with respect to writes,
+while point reads are not.
+
+**Why this is dangerous specifically for MILAAN.** The minting harness creates a
+few hundred transactions and then reads the ledger back to build the candidate
+pool. A read-after-write against a list endpoint will silently return a *short*
+pool. The solver would then be handed a candidate set missing the very
+transactions that compose the target credit, and would report `NO_COVER` —
+a fabricated exception, attributed to the solver, caused by the harness. That is
+the worst class of bug this project can have: it degrades the headline metric
+while looking like a genuine finding.
+
+**Fix (planned).** The minting harness records every entity id it creates at
+creation time and reconciles that registry against the list endpoint, polling
+until the two agree, with a timeout that raises rather than proceeding on a
+short pool. Point reads by id are the source of truth; list endpoints are
+treated as an index that may lag. No batch is allowed into an eval run until its
+registry reconciles exactly.
+
+**Wider note.** This is why `check_keys.py` exists as a probe rather than an
+assumption. Nothing in Razorpay's documentation states the consistency model of
+the collection endpoints; it took a write and an immediate read to find it, on
+the first day the keys existed.
