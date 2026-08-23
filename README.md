@@ -60,12 +60,22 @@ model can beat it — its score is the *ceiling* on what any model could add.
   malign accepted ⊆ baseline    True
 ```
 
-The safety property is the cause: uniqueness is adjudicated on the full pool, so
-a hint can never break a genuine tie. The mechanism that makes the layer
-trustworthy is exactly what makes it useless on this workload. That is
-[incident #18](INCIDENTS.md), and the zero is published rather than engineered
-away — the only route to a positive number is weakening containment, which buys
-it with the wrong joins this project exists to prevent.
+Two separate facts, and they are worth keeping apart:
+
+**Measured.** After the capture-time fix ([#19](INCIDENTS.md)) the interval layer
+resolves 16 of 18 credits, so only two reach the blind layer where a hint could
+act — and neither carries an opaque narration. The oracle was offered **zero
+lines**. The layer is not merely unhelpful here; it is never invoked.
+
+**Predicted, not demonstrated by that run.** Had it been invoked, containment
+says it still could not have raised the match rate: uniqueness is adjudicated on
+the full pool, so a hint can never break a genuine tie. That argument rests on
+the malign configuration and the 33 containment tests, not on the +0 above — the
++0 is a fact about reachability.
+
+That is [incident #18](INCIDENTS.md). The zero is published rather than
+engineered away: the only route to a positive number is weakening containment,
+which buys it with the wrong joins this project exists to prevent.
 
 The test suite is the other half of the argument:
 
@@ -179,16 +189,26 @@ injection, since the narration is attacker-controlled in the real world.
 The attack that kills most reconciliation demos is: *you generated the data, so
 you generated the answer key, so your match rate measures your generator.*
 
-MILAAN's answer is that **it authors the inputs and Razorpay authors the
-answers.** Razorpay independently assigns entity ids, `fee`, `tax`, capture
-timestamps and the settlement grouping. The `settlement_id` column is stripped
-before the solver ever sees it, and the solver's proposed cover is graded by set
-equality against the withheld column. MILAAN never decides which payment belongs
-to which settlement.
+MILAAN has two answers and they apply to different data. Being precise about
+which is which matters more than either one.
 
-Underneath that sits a leg that survives even if the first fails entirely: exact
-cover is **self-certifying**. A proposed grouping sums to the paise or it does
-not. Neither the author nor a model can fudge a match into existence.
+**On Razorpay's published sample reports, the answer key really is theirs.**
+Razorpay grouped those settlements years before this project existed. When the
+closure identity holds to the paise on all three complete settlements, that is a
+property of *their* ledger. That leg is externally authored and needs no defence.
+
+**On the generated batch — the one every headline number comes from — it is
+not.** The generator assigns the entity ids, the timestamps and the grouping.
+Razorpay authors only the fee *formula*, and that formula is the one thing in the
+answer key measured from their real engine (25 of 25 charges, INCIDENTS.md #16).
+Claiming external authorship of the grouping here would be false, and an earlier
+version of this section did claim it.
+
+What actually defends the generated batch is weaker and sufficient: exact cover
+is **self-certifying**. A proposed grouping sums to the paise or it does not.
+Neither the author nor a model can fudge a match into existence, which is why
+the number worth reading is not the match rate but the **zero false matches** —
+that one cannot be inflated by a generous generator.
 
 Full provenance — what is Razorpay's, what is published, and what is mine and
 labelled as mine — is in [`DATA.md`](DATA.md).
@@ -221,7 +241,7 @@ quietly grading the engine on a curve (#20).
 | Narration grammar | **done** |
 | LLM hint layer + containment property | **done**, 33 tests |
 | Interval layer | **done** — carries 16 of 18 credits |
-| Sealed ground-truth generator | **done**, seed + SHA-256 committed |
+| Sealed ground-truth generator | **done**, seed + digest pinned in the test suite |
 | Batch runner, match rate, exception list | **done** — `milaan run` |
 | Hint-layer A/B (none / perfect / hostile) | **done** — `milaan hints`, ceiling is +0 |
 | Anchor layer (UTR → settlement join) | **not built** — see LIMITS.md |

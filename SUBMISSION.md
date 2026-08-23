@@ -44,8 +44,9 @@ on 4 of 25 payments, which is exactly the error that turns a valid cover into an
 unexplained exception.
 
 Where an LLM is used is deliberately narrow, and its contribution is **measured
-rather than claimed**: on this workload a *perfect* extractor adds **+0** matched
-credits, and that zero is published.
+rather than claimed**: after the interval layer resolves 16 of 18 credits, the
+hint layer is offered **zero lines** and its ceiling on this workload is **+0**.
+That zero is published rather than engineered away.
 
 ---
 
@@ -110,11 +111,14 @@ excuses whatever the engine failed at is not a measurement.
 **Two things I refused to do.** Razorpay's checkout runs hCaptcha, which killed
 automated payment minting — I did not try to defeat it, because a data pipeline
 that depends on evading a payment provider's fraud controls is not one you want
-to explain to that payment provider. And the LLM layer's measured usefulness is
-**+0**: a perfect extractor adds nothing, because uniqueness is adjudicated on
-the full candidate pool precisely so a hint can never manufacture it. The only
-route to a positive number is weakening that property — buying it with exactly
-the wrong joins the project exists to prevent. So the zero is published.
+to explain to that payment provider. And the LLM layer's measured contribution is
+**+0**: once the interval layer resolves 16 of 18 credits, the hint layer is
+offered zero lines. Containment predicts it would still be +0 if invoked —
+uniqueness is adjudicated on the full pool, so a hint cannot break a tie — but
+that is an architectural argument backed by the adversarial config, not something
+this particular run demonstrated. The only route to a positive number is
+weakening containment, which buys it with the wrong joins this project exists to
+prevent. So the zero is published, with its cause stated accurately.
 
 Along the way: Razorpay's list endpoints are eventually consistent, and its rate
 limiter returns a plain `400` reading "Too many requests" rather than a 429.

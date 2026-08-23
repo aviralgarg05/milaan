@@ -26,11 +26,32 @@ def test_the_batch_clears_track_04s_stated_scale():
     )
 
 
+# The sealed batch's digest, pinned as a literal. This is what makes the seal
+# real: self-consistency proves only determinism, whereas a committed digest is
+# something a reviewer can check and a tuned generator cannot satisfy silently.
+# See INCIDENTS.md #21 — the earlier claim of a "hash commitment" had no
+# committed hash behind it.
+SEALED_DIGEST = "d50fb44e238c32df8e13dccf851cd6b31910a8f86e92d1808cfccab29e30caf5"
+
+
 def test_the_batch_is_deterministic_and_hash_stable():
-    """The seal. A batch tuned after seeing results cannot pass as the original."""
     a, b = generate(20260823), generate(20260823)
-    assert batch_hash(a) == batch_hash(b)
-    assert batch_hash(generate(1)) != batch_hash(a)
+    assert batch_hash(a) == batch_hash(b), "generation must be deterministic"
+    assert batch_hash(generate(1)) != batch_hash(a), "a different seed must differ"
+
+
+def test_the_sealed_digest_is_pinned_so_tuning_cannot_pass_silently():
+    """Any edit to the generator changes this and breaks the build, deliberately.
+
+    If you changed the generator on purpose, update the literal in the SAME
+    commit as the change and say why in the message. The point is that the batch
+    cannot drift quietly under a headline number that was measured on a
+    different batch.
+    """
+    assert batch_hash(generate()) == SEALED_DIGEST, (
+        "the sealed batch changed. If deliberate, update SEALED_DIGEST here and "
+        "re-run `milaan run` — every published figure is measured on this batch."
+    )
 
 
 def test_no_wrong_join_is_ever_reported():

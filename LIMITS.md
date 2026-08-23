@@ -7,9 +7,14 @@ every hedge in the project resolves to a plain sentence.
 ## The claim, stated exactly
 
 > Given a ledger and a set of bank credits grouped by a documented T+2
-> working-day rule, MILAAN recovers the grouping on **75% of decidable credits**
-> (9/12), correctly refuses **6 of 6** planted-undecidable credits, and reported
-> **zero wrong joins** across the batch.
+> working-day rule, MILAAN recovers the grouping on **80% of decidable credits**
+> (12/15), correctly refuses **3 of 3** structurally-undecidable credits, and
+> reported **zero wrong joins** across the batch.
+
+The undecidable denominator dropped from 6 to 3 on purpose, and it *lowered* the
+headline. See INCIDENTS.md #20: three of the six had been excused as "correctly
+refused" when nothing in their construction guaranteed they were unrefusable. A
+denominator that excuses whatever the engine failed at is not a measurement.
 
 The last clause is guaranteed by arithmetic — a cover sums to the paise or it is
 not accepted. The first two are measurements on a generated batch, and the
@@ -20,6 +25,12 @@ paragraphs below are why that distinction matters.
 It does **not** show that MILAAN would reconcile a real Indian merchant's real
 bank statement.
 
+- The **grouping is mine, not Razorpay's.** The generator assigns the entity ids,
+  the capture timestamps and the settlement membership. An earlier version of the
+  README claimed Razorpay authored these; it did not, and that claim is gone
+  (INCIDENTS.md #21). What defends this batch is self-certification — a cover
+  sums to the paise or it does not — plus the sealed generator, not external
+  authorship.
 - The **grouping rule is mine.** T+2 working days is Razorpay's documented
   settlement cycle, but the batch applies my reading of it, not an observation of
   their engine. Holidays are not modelled, so a real calendar would shift some
@@ -52,8 +63,8 @@ of these were known.
 
 ## What is measured on small numbers
 
-- **18 credits, 269 ledger rows, one seed.** The percentages carry the precision
-  of an 18-item sample and no more. 75% is 9 of 12.
+- **18 credits, 237 ledger rows, one seed.** The percentages carry the precision
+  of an 18-item sample and no more. 80% is 12 of 15.
 - **25 measured payments** for the fee model, frozen by the 30-link cap. Enough
   to identify a two-component tariff and confirm it on every observation; not
   enough to rule out a third component that never fires in that range.

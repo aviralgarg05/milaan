@@ -865,3 +865,71 @@ are asserted separately in `tests/test_hints_ab.py`, because "the ceiling is
 zero" and "the layer is unreachable" are different claims and a future change
 could move either. The adversarial half is still measured on a larger batch,
 where the layer is reachable, and containment still holds there.
+
+---
+
+### #21 — an audit found my documents overstating my own code, in four places
+
+**Date** 24 Aug · **Found by** an adversarial verification pass · **Pinned by** `test_the_sealed_digest_is_pinned_so_tuning_cannot_pass_silently`
+
+Four false claims, all in the documents rather than the code, all mine. The code
+was fine every time. Listed worst first.
+
+**1. The README claimed Razorpay authored my answer key. It does not.**
+
+> *"Razorpay independently assigns entity ids, `fee`, `tax`, capture timestamps
+> and the settlement grouping … MILAAN never decides which payment belongs to
+> which settlement."*
+
+For the 18-credit batch that produces **every headline number**, my generator
+assigns the ids, the timestamps and the grouping. Razorpay authors the fee
+*formula* and nothing else. `grep -c 'razorpay-samples' src/milaan/cli.py` returns
+**0** — the run path opens no Razorpay file at all, and DATA.md records the probe
+showing `GET /v1/settlements` is empty, so Razorpay-authored groupings
+demonstrably do not exist in this repo.
+
+This was the single worst sentence in the project. It was the answer to the
+central attack — *you wrote your own answer key* — and it answered it with a
+falsehood. What is true and sufficient: on Razorpay's **published sample
+reports** the grouping really is theirs, and on the generated batch the defence
+is self-certification — a cover sums to the paise or it does not. The README now
+separates the two legs and says which data each applies to.
+
+**2. LIMITS.md, the honesty document, had stale numbers.** It still read 75%
+(9/12), "6 of 6", 269 ledger rows — the figures from before #19 and #20. The
+shipping tool prints 80% (12/15), 3/3, 237 rows. A reviewer who opens the file
+the README points to for "full caveats" would have found it contradicting the
+tool's own output.
+
+**3. I overstated the rigour of my own negative result.** README and SUBMISSION
+said a *perfect extractor adds nothing* **because** uniqueness is adjudicated on
+the full pool. The oracle was offered **zero lines** — so full-pool adjudication
+was never exercised and cannot be what caused the zero. The measured cause is
+reachability: after #19 only two credits reach the blind layer and neither has an
+opaque narration. Containment remains a sound *prediction* backed by the malign
+config and 33 unit tests, but it did not produce this particular +0, and the two
+are now stated separately. Ironic placement: the overstatement was inside the
+paragraph arguing for honest measurement.
+
+**4. A "hash commitment" with no committed hash.** DATA.md said the generator was
+*"seeded, sealed and hash-committed before any solver exists"*. Two problems.
+`git log --diff-filter=A` shows the generator was committed **23 Aug** and the
+solver **21 Aug** — two days earlier, so the chronology was backwards. And
+grepping the repo for the digest the tool prints returned nothing: the hash was
+computed at runtime and the test only checked it against itself. Self-consistency
+proves determinism, not sealing. A seal a third party cannot check is not a seal.
+The digest is now pinned as a literal in the test suite, so any change to the
+generator breaks the build.
+
+**What I take from this.** Every previous entry in this log is a case of the code
+or my reasoning being wrong. This one is different and worse: **the code was
+correct and the documents describing it were not.** All four claims made the
+project sound stronger than it was, which is the direction that should worry a
+reader most — and three of them appeared in the same commits where I was
+congratulating myself for honest measurement.
+
+I did not find any of them. An adversarial pass over the repo did, in one run,
+and it is the second time an outside reading has caught something I could not see
+from inside (the first being #16, the fee model). The pattern is consistent
+enough to be worth naming: I am reliable at measuring things and unreliable at
+auditing my own claims about the measurements.
