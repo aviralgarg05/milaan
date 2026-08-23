@@ -6,9 +6,13 @@ to the paise — and refuses rather than guesses when more than one answer fits.
 
 Razorpay AI Buildathon 2026 · **Track 04 — AI Finance Controller**
 
-> **मिलान** (*milān*) is the Hindi accounting term for *tallying*. Indian
-> accountants say *"milaan karna"* for reconciling accounts, and *"bank statement
-> ka milaan"* is the everyday phrase for precisely the job this does.
+> **बैंक मिलान विवरण** *(bank milan vivran)* is one of the two standard Hindi
+> terms for **Bank Reconciliation Statement**; Tally's Hindi documentation uses
+> *मिलान करना* for reconciling an account against a passbook. मिलान — matching,
+> tallying — is the accounting sense, distinct from मिलन, meeting.
+>
+> In fairness: the name came out of the idea-generation pass, and the fit was
+> noticed afterwards. It is a good fit and not a clever one.
 
 ---
 

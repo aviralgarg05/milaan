@@ -23,6 +23,16 @@ Adequate for a hackathon submission. Not adequate for commercial use: MILAAN is 
 common dictionary word, which makes it a weak mark — hard to register, easy for
 others to use — and a real clearance search would be needed before relying on it.
 
-**Etymology, and why the name fits.** मिलान (*milān*) is the Hindi term for
-tallying or matching. *"Milaan karna"* is what an Indian accountant says for
-reconciling accounts. The name is the job.
+**Etymology.** बैंक मिलान विवरण *(bank milan vivran)* is one of the two standard
+Hindi terms for Bank Reconciliation Statement (the other is बैंक समाधान विवरण),
+and Tally's Hindi documentation uses मिलान करना for reconciling an account
+against a passbook. मिलान — matching, tallying — is the accounting sense, and is
+a different word from मिलन, meeting.
+
+**Provenance of the name, stated plainly.** MILAAN was produced by the
+idea-generation pass of the research workflow, not chosen for its meaning. The
+accounting sense was noticed later, during this trademark check, after the
+project was built — and the claim above was then verified against sources rather
+than left as a plausible assertion. The fit is real and it is luck, not design.
+Recording that here because a post-hoc justification presented as a design
+decision is exactly the kind of thing this project claims not to do.
