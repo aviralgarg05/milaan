@@ -463,3 +463,54 @@ frozen at 19 measured payments plus the 7 probes in flight — 26 total. That is
 enough to answer the rounding question and to map the anomaly's fractional
 neighbourhood, and it is not enough to characterise the discrete component fully.
 `LIMITS.md` states the sample size and stops there.
+
+---
+
+### #12b — the anomaly, localised
+
+**Date** 23 Aug · **Resolves the open question in #12** · **Pinned by** `tests/test_fee_model.py`
+
+#12 left the question open and said so. A second batch of seven links answered
+it: sweep the fractional part of the exact fee at constant magnitude, with
+controls, and find where the +1 lives.
+
+Writing `k = (amount × 11) mod 500`, so the exact fee is `q + k/500`, across all
+25 measured payments:
+
+```
+ frac   .478  .500  .502 │ .510  .522  .540 │ .560  .600  .700  .900
+ delta   +0    +0    +0  │  +1    +1    +1  │  +0    +0    +0    +0
+ n       2     5     1   │  1     2     1   │  1     2     1     1
+                         └──── the band ────┘
+```
+
+The band is `(0.502, 0.560)`, bracketed to within 0.008 on the left and 0.020 on
+the right. Every amount inside came back at ceiling + 1; every amount outside
+matched ceiling exactly.
+
+**The controls did their job.** Three probes at .600, .700 and .900 were minted
+expecting +0 precisely so that a backend change affecting everything would be
+distinguishable from a real effect. They came back +0. The effect is real.
+
+**And the stronger claim now holds over the full dataset.** Intersecting the
+feasible rate interval implied by each of the 25 observations gives the **empty
+set** — under ceiling and under half-up alike — and allowing an additive constant
+does not rescue it either. Razorpay's test-mode card fee is **not expressible as
+any single percentage of gross**. Both proofs ship as tests rather than as prose,
+so a later refactor cannot fit its way out of them.
+
+**What ships.** Two models, both reported. `base_fee_ceiling` is conservative and
+fits 21/25. `base_fee_banded` adds the measured +1 inside the band and fits
+25/25 — *by construction*, which is exactly why the evaluation publishes the
+match rate under both. A curve fitted to four points is a hypothesis, not a
+result, and presenting the 25/25 alone would be the kind of flattering number
+this project exists to avoid.
+
+Amounts inside the band still come back `confident=False` and route to
+`FEE_MODEL_RESIDUAL`.
+
+**What is still unknown, and stays unknown.** *Why* the band exists. The 30-link
+test-mode cap (#13) is now spent, so the corpus is frozen at 25. Narrowing
+`(0.502, 0.560)` further, or explaining the discrete component behind it, needs
+an account this project does not have. `LIMITS.md` states the sample size and
+stops there.

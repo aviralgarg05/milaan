@@ -1,14 +1,15 @@
-"""The fee model, pinned against nineteen real captured Razorpay test payments.
+"""The fee model, pinned against 25 real captured Razorpay test payments.
 
 These are not fixtures I invented. Each row is a live test-mode payment with a
 Razorpay-issued id (see `results/mint_batch.json`), whose `fee` and `tax` were
 computed by Razorpay's own engine. The amounts were chosen to probe the rounding
 boundary — `fee = amount × 11/500`, so amounts congruent to 250 mod 500 land the
-fee on exactly half a paise.
+fee on exactly half a paise — and then, in a second batch, to sweep the
+fractional part across the region where the first batch misbehaved.
 
 The point of this file is not that the model is right. It is that the model's
-error is **measured, bounded and named** — including two observations no model
-reproduces.
+error is **measured, bounded and named**, and that no single percentage of gross
+reproduces all 25 observations under any rounding rule.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import pytest
 
 from milaan.fees import (
     OBSERVATIONS,
+    base_fee_banded,
+    in_suspect_band,
     RATE_DEN,
     RATE_NUM,
     UNEXPLAINED,
@@ -62,7 +65,7 @@ def test_gst_is_18_percent_of_the_base_fee_where_it_appears():
 
 
 def test_gst_is_absent_below_a_threshold_that_razorpay_does_not_document():
-    """Sixteen of nineteen payments carry tax=0. The threshold is unpublished.
+    """Twenty-two of 25 payments carry tax=0. The threshold is unpublished.
 
     This is why `LIMITS.md` says the GST line is only partially exercised: below
     roughly ₹1,000 test mode returns an all-in fee and never breaks out tax, so
@@ -107,8 +110,8 @@ def test_ceiling_beats_half_up_and_is_the_model():
     ceil_fits = sum(_base(f, t) == _q(a, ROUND_CEILING) for a, f, t in OBSERVATIONS)
     half_up_fits = sum(_base(f, t) == _q(a, ROUND_HALF_UP) for a, f, t in OBSERVATIONS)
 
-    assert ceil_fits == 16, f"ceiling fit changed: {ceil_fits}/18"
-    assert half_up_fits == 13, f"half-up fit changed: {half_up_fits}/18"
+    assert ceil_fits == 21, f"ceiling fit changed: {ceil_fits}/25"
+    assert half_up_fits == 18, f"half-up fit changed: {half_up_fits}/25"
     assert ceil_fits > half_up_fits
 
 
@@ -129,9 +132,10 @@ def test_the_model_matches_every_observation_it_claims_to():
 def test_the_unexplained_residuals_are_still_unexplained(amount):
     """A guard against quietly 'fixing' these by fitting a model to them.
 
-    251p and 10251p came back one paise ABOVE ceiling. If a future change makes
-    the model reproduce them, that change must be deliberate and documented —
-    not a coincidence of refactoring.
+    Four amounts came back one paise ABOVE plain ceiling. If a future change
+    makes the *ceiling* model reproduce them, that change must be deliberate and
+    documented — not a coincidence of refactoring. (`base_fee_banded` is expected
+    to reproduce them; that is what it is for.)
     """
     observed = dict((a, _base(f, t)) for a, f, t in OBSERVATIONS)
     assert observed[amount] == base_fee_ceiling(amount) + 1, (
@@ -173,3 +177,68 @@ def test_an_observed_fee_always_wins_over_the_model():
     assert estimate.source == "observed"
     assert estimate.confident is True
     assert base_fee_ceiling(251) == 6, "the model would have said 6, and would be wrong"
+
+
+# ------------------------------------------------- the measured band
+
+
+def test_the_suspect_band_is_bracketed_by_controls_on_both_sides():
+    """The +1 region is not asserted, it is bounded by observations either side.
+
+    Four payments inside the band came back at ceiling+1 (.510, .522 twice, .540).
+    Twenty-one outside it matched ceiling exactly — including .502 and .560, which
+    bracket the band to within 0.008 on the left and 0.020 on the right, and three
+    amounts minted specifically as controls (.600, .700, .900). A backend change
+    affecting everything would have shown up as the controls drifting too. They
+    did not.
+    """
+    inside, outside = [], []
+    for amount, fee, tax in OBSERVATIONS:
+        delta = _base(fee, tax) - _q(amount, ROUND_CEILING)
+        (inside if in_suspect_band(amount) else outside).append((amount, delta))
+
+    assert all(d == 1 for _, d in inside), f"band should be uniformly +1: {inside}"
+    assert all(d == 0 for _, d in outside), f"outside band should be uniformly +0: {outside}"
+    assert len(inside) == 4 and len(outside) == 21
+
+
+def test_the_banded_model_reproduces_every_observation():
+    """...and is reported alongside plain ceiling, never instead of it.
+
+    This model fits its own training data by construction. That is exactly why
+    the evaluation publishes the match rate under BOTH models — a curve fitted to
+    four points is a hypothesis, not a result.
+    """
+    for amount, fee, tax in OBSERVATIONS:
+        assert base_fee_banded(amount) == _base(fee, tax), f"{amount}p"
+
+
+def test_no_single_rate_fits_all_observations_under_any_rounding():
+    """The strongest form of the claim, over all 25 measurements.
+
+    Intersecting the feasible rate interval implied by each observation yields the
+    EMPTY set, for ceiling and for half-up alike. Razorpay's test-mode card fee is
+    therefore not expressible as any single percentage of gross.
+    """
+    from fractions import Fraction
+
+    for rule in ("ceil", "round"):
+        lo, hi = Fraction(0), Fraction(1)
+        for amount, fee, tax in OBSERVATIONS:
+            base = _base(fee, tax)
+            if rule == "ceil":
+                l, h = Fraction(base - 1, amount), Fraction(base, amount)
+            else:
+                l, h = Fraction(2 * base - 1, 2 * amount), Fraction(2 * base + 1, 2 * amount)
+            lo, hi = max(lo, l), min(hi, h)
+        assert lo >= hi, f"a single rate now fits under {rule}: ({float(lo)}, {float(hi)}]"
+
+
+def test_no_additive_constant_rescues_the_rate_either():
+    from fractions import Fraction
+
+    lo, hi = Fraction(-1000), Fraction(1000)
+    for amount, fee, tax in OBSERVATIONS:
+        exact = Fraction(amount * RATE_NUM, RATE_DEN)
+        lo, hi = max(lo, Fraction(_base(fee, tax) - 1) - exact), min(hi, Fraction(_base(fee, tax)) - exact)
+    assert lo >= hi, f"fee = ceil(0.022*a + c) now fits with c in ({float(lo)}, {float(hi)}]"

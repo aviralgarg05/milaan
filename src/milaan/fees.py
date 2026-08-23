@@ -10,9 +10,11 @@ cannot be derived from first principles: Razorpay's published pricing gives a
 rate, not a rounding rule, and the rounding rule is what a paise-exact identity
 turns on.
 
-So it was measured. Nineteen real captured test-mode payments, amounts chosen to
-probe the rounding boundary rather than sampled — see `scripts/mint_links.py`.
-The observations are pinned in `tests/test_fee_model.py` and reproduced below.
+So it was measured. Twenty-five real captured test-mode payments across two
+batches, amounts chosen rather than sampled — the first to probe the rounding
+boundary (`scripts/mint_links.py`), the second to sweep the fractional part
+across the region where the first misbehaved (`scripts/mint_followup.py`), with
+three controls. The observations are pinned in `tests/test_fee_model.py`.
 
 WHAT THE MEASUREMENT ESTABLISHED
 --------------------------------
@@ -21,26 +23,29 @@ WHAT THE MEASUREMENT ESTABLISHED
 2. Rounding is **not banker's**. Both amounts engineered to land the fee on
    exactly half a paise came back rounded *up*: ₹7.50 → 17p (banker's predicts
    16p) and ₹507.50 → 1117p (banker's predicts 1116p).
-3. **Ceiling fits 16 of 18.** Plain half-up fits only 13. Ceiling is therefore
-   the model, and `CEILING_FITS`/`OBSERVATIONS` below record the evidence.
+3. **Ceiling fits 21 of 25.** Plain half-up fits only 18. Ceiling is therefore
+   the conservative model.
 
-WHAT IT DID NOT EXPLAIN, AND THIS IS NOT A ROUNDING QUESTION
-------------------------------------------------------------
-Two amounts sit one paise **above ceiling**:
+THE ANOMALY, AND WHY IT IS NOT A ROUNDING QUESTION
+--------------------------------------------------
+Four amounts sit one paise **above ceiling**, and they are not scattered. Writing
+`k = (amount × 11) mod 500`, so the exact fee is `q + k/500`:
 
-    251p    exact 5.522    ceil 6    actual 7
-    10251p  exact 225.522  ceil 226  actual 227
+    frac   .478  .500  .502 │ .510  .522  .540 │ .560  .600  .700  .900
+    delta   +0    +0    +0  │  +1    +1    +1  │  +0    +0    +0    +0
+    n       2     5     1   │  1     2     1   │  1     2     1     1
+                            └──── the band ────┘
 
-Both are `≡ 251 (mod 500)`; both are odd; both sit just above a half-paise
-boundary. Their mirror images just *below* the boundary — 249p and 10249p, also
-odd — match ceiling exactly.
+The second batch was minted specifically to find these boundaries, at constant
+magnitude (~₹100–₹105) so ticket size could not confound it, and with three
+controls at .600/.700/.900 that were expected to — and did — match ceiling.
 
-This cannot be repaired by choosing a different rate. Requiring
-`ceil(r × 10251) = 227` forces `r > 0.0220466`, while `ceil(r × 500000) = 11000`
-forces `r ≤ 0.022`. Those intervals are disjoint, so **no single percentage with
-any rounding rule reproduces both observations.** There is a discrete component
-to Razorpay's fee computation that 19 samples do not resolve, and MILAAN does not
-pretend otherwise.
+**No single rate rescues this.** Intersecting the feasible rate interval implied
+by each of the 25 observations yields the EMPTY set, under ceiling and under
+half-up alike; so does allowing an additive constant. Razorpay's test-mode card
+fee is therefore **not expressible as any single percentage of gross**. There is
+a discrete component that 25 samples localise but do not explain, and MILAAN does
+not pretend otherwise. Both proofs ship as tests.
 
 HOW THE SYSTEM BEHAVES GIVEN THAT
 ---------------------------------
@@ -54,8 +59,8 @@ wrong answer.
 
 GST
 ---
-`tax` is 0 on sixteen of the nineteen payments and non-zero only on the two
-largest (₹2,499 → 990p and ₹5,000 → 1,980p, both exactly 18% of the base fee).
+`tax` is 0 on 23 of the 25 payments and non-zero only on the two largest
+(₹2,499 → 990p and ₹5,000 → 1,980p, both exactly 18% of the base fee).
 The threshold sits somewhere between ₹999 and ₹2,499 and is not documented. So
 the GST line is only partially exercised in test mode, and `LIMITS.md` says so.
 """
@@ -70,27 +75,66 @@ __all__ = ["FeeEstimate", "fee_for", "RATE_NUM", "RATE_DEN", "OBSERVATIONS", "UN
 RATE_NUM, RATE_DEN = 11, 500  # 2.200% of gross
 GST_NUM, GST_DEN = 18, 100
 
-# (amount_paise, observed_fee_paise, observed_tax_paise) — 19 real captured
-# test-mode payments, 23 Aug 2026. Ids in results/mint_batch.json.
+# (amount_paise, observed_fee_paise, observed_tax_paise) — 25 real captured
+# test-mode payments across two batches, 23 Aug 2026. Ids in
+# results/mint_batch.json and results/followup_batch.json.
 OBSERVATIONS: tuple[tuple[int, int, int], ...] = (
+    # batch 1 — rounding-boundary calibration
     (100, 3, 0), (249, 6, 0), (250, 6, 0), (251, 7, 0), (750, 17, 0),
     (1250, 28, 0), (4900, 108, 0), (9900, 218, 0), (10249, 226, 0),
     (10250, 226, 0), (10251, 227, 0), (29900, 658, 0), (49900, 1098, 0),
     (50750, 1117, 0), (71300, 1569, 0), (99900, 2198, 0),
     (249900, 6488, 990), (500000, 12980, 1980),
+    # batch 2 — fractional-part sweep, constant magnitude, three controls
+    (10341, 228, 0), (10205, 226, 0), (10070, 223, 0), (10480, 231, 0),
+    (10300, 227, 0), (10350, 228, 0), (10450, 230, 0),
 )
 
-# Amounts the ceiling model does not reproduce. Kept as data, not prose, so the
-# test suite fails loudly if a future change silently "fixes" them by fitting.
-UNEXPLAINED: tuple[int, ...] = (251, 10251)
+# The measured region where the fee exceeds ceiling by exactly one paise.
+# Writing k = (amount * 11) mod 500, the exact fee is q + k/500. Every
+# observation with k/500 strictly inside these bounds came back at ceiling + 1;
+# every observation outside matched ceiling exactly.
+#
+#   +0 at .478 (x2), .500 (x5), .502, .560, .600 (x2), .700, .900
+#   +1 at .510, .522 (x2), .540
+#
+# The bounds are therefore known to within 0.008 on the left and 0.020 on the
+# right. They are OPEN: .502 and .560 are both confirmed +0.
+SUSPECT_FRAC_LO, SUSPECT_FRAC_HI = 0.502, 0.560
+
+# Amounts measured at ceiling + 1. Data, not prose, so the suite fails loudly if
+# a future change silently "fixes" them by fitting.
+UNEXPLAINED: tuple[int, ...] = (251, 10251, 10205, 10070)
 
 
 def base_fee_ceiling(amount_paise: int) -> int:
-    """2.200% of gross, rounded up to the paise. The working model."""
+    """2.200% of gross, rounded up to the paise. The conservative model."""
     if amount_paise < 0:
         raise ValueError("amount must be non-negative")
     exact = Decimal(amount_paise) * RATE_NUM / RATE_DEN
     return int(exact.quantize(Decimal("1"), rounding=ROUND_CEILING))
+
+
+def frac_part(amount_paise: int) -> float:
+    """k/500, where the exact fee is q + k/500. Determines the suspect band."""
+    return ((amount_paise * RATE_NUM) % RATE_DEN) / RATE_DEN
+
+
+def in_suspect_band(amount_paise: int) -> bool:
+    """True when the amount falls in the measured ceiling+1 region."""
+    return SUSPECT_FRAC_LO < frac_part(amount_paise) < SUSPECT_FRAC_HI
+
+
+def base_fee_banded(amount_paise: int) -> int:
+    """Ceiling, plus the measured +1 correction inside the suspect band.
+
+    This reproduces all 25 observations. It is reported *alongside* the plain
+    ceiling model rather than replacing it, because it is a curve fitted to five
+    positive samples whose boundary is bracketed but not resolved — and a model
+    that matches its own training data is not evidence of anything. The
+    evaluation publishes the match rate under both.
+    """
+    return base_fee_ceiling(amount_paise) + (1 if in_suspect_band(amount_paise) else 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,14 +169,15 @@ def fee_for(amount_paise: int, *, observed_fee: int | None = None,
         return FeeEstimate(amount_paise, observed_fee, observed_tax or 0,
                            source="observed", confident=True)
 
-    modelled = base_fee_ceiling(amount_paise)
-    residue = amount_paise % RATE_DEN
-    suspect = residue in {a % RATE_DEN for a in UNEXPLAINED}
+    suspect = in_suspect_band(amount_paise)
+    modelled = base_fee_banded(amount_paise) if suspect else base_fee_ceiling(amount_paise)
     return FeeEstimate(
         amount_paise, modelled, 0, source="modelled", confident=not suspect,
         note=(
-            f"amount ≡ {residue} (mod {RATE_DEN}); this residue class is one where "
-            "measured fees exceeded the ceiling model by 1p (see UNEXPLAINED). "
-            "Route to FEE_MODEL_RESIDUAL rather than closing a cover on it."
+            f"fractional part {frac_part(amount_paise):.3f} falls in the measured "
+            f"({SUSPECT_FRAC_LO}, {SUSPECT_FRAC_HI}) band where Razorpay charged one "
+            "paise above ceiling in 5 of 5 observations. The +1 is applied, but the "
+            "band's boundary is bracketed rather than resolved, so this member is "
+            "routed to FEE_MODEL_RESIDUAL rather than closing a cover on it."
         ) if suspect else "",
     )
