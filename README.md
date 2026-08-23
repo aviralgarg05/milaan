@@ -6,6 +6,10 @@ to the paise — and refuses rather than guesses when more than one answer fits.
 
 Razorpay AI Buildathon 2026 · **Track 04 — AI Finance Controller**
 
+> **मिलान** (*milān*) is the Hindi accounting term for *tallying*. Indian
+> accountants say *"milaan karna"* for reconciling accounts, and *"bank statement
+> ka milaan"* is the everyday phrase for precisely the job this does.
+
 ---
 
 ## Start here
