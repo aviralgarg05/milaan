@@ -54,12 +54,16 @@ Settlements batch by capture time, so a cover is usually an **interval** in time
 order — but not always, because held payments drop out and late ones roll in. So
 the solver is layered, cheapest first:
 
-| Layer | Method | Cost |
-|---|---|---|
-| **Anchor** | UTR in the narration → settlement id. No search. | O(1) |
-| **Interval** | Prefix sums over time-ordered candidates. | O(n) |
-| **Perturbed interval** | Interval ± a bounded set of exclusions/carry-ins. | bounded |
-| **Blind cover** | Signed subset-sum, bitset DP over paise. | pseudo-poly |
+| Layer | Method | Cost | Status |
+|---|---|---|---|
+| **Anchor** | UTR in the narration → settlement id. No search. | O(1) | grammar ships; join not built |
+| **Interval** | Prefix sums over time-ordered candidates. | O(n) | **not built** |
+| **Perturbed interval** | Interval ± a bounded set of exclusions/carry-ins. | bounded | **not built** |
+| **Blind cover** | Signed subset-sum, bitset DP over paise. | pseudo-poly | **ships** |
+
+Only the blind-cover layer and the narration grammar exist today. The cheap
+layers above it are the plan, not the product, and this table says so rather
+than describing them in the present tense.
 
 Refunds subtract, so the blind layer shifts the signed problem to a non-negative
 one using
@@ -96,15 +100,20 @@ that does not.
 **Used — narration hints, and only where the deterministic grammar found
 nothing.** When no UTR, no reference and no parseable structure can be extracted
 from a bank narration string, an LLM proposes hints that *narrow the candidate
-set* — a probable date window, a probable counterparty.
+set* — a probable date window, a probable counterparty. The proposer, the typed
+hint schema, the grounding check and the containment tests all ship; what does
+not yet exist is the batch runner that would report how often it helps.
 
 The containment property is the point, and it ships as a test:
 
 > for **any** LLM output, including deliberately hallucinated output, the
 > accepted match set is a subset of the arithmetically verifiable match set.
 
-The model can only reduce the exception count. It cannot cause a wrong join. This
-is demonstrated live, on camera, by feeding the hint layer garbage.
+The model can only reduce the exception count. It cannot cause a wrong join.
+That property is proved by construction in `hints/grounding.py` and exercised in
+`tests/test_hint_containment.py` against hallucinated references, injected
+instructions and adversarial garbage — including a narration carrying a prompt
+injection, since the narration is attacker-controlled in the real world.
 
 ## Ground truth, and how it avoids being circular
 
@@ -141,10 +150,16 @@ scale, and said so instead of quietly deleting the test.
 | Razorpay report parsers (3 dialects) | done, traps pinned |
 | Closure identity on Razorpay's own data | **done, passing** |
 | Signed subset-sum + uniqueness + budget | done, verified vs brute force |
-| Interval & perturbed-interval layers | in progress |
-| Narration grammar | in progress |
-| Sealed ground-truth generator | in progress |
-| Eval harness, scorecard, ablations | in progress |
-| LLM hint layer + containment property | in progress |
+| Narration grammar | **done** |
+| LLM hint layer + containment property | **done**, 33 tests |
+| Interval & perturbed-interval layers | **not started** |
+| Sealed ground-truth generator | **not started** |
+| Batch runner, match rate, exception list | **not started** — this is the Track 04 deliverable |
+| 5-minute pitch video | **not started** |
+
+**What this repo cannot do yet:** run a batch, report a match rate, or emit an
+exception list. Those are what Track 04 actually grades, and they are the next
+and largest piece of work. Everything above is the machinery they will be built
+on, not a substitute for them.
 
 Licence: MIT.
