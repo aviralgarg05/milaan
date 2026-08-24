@@ -169,66 +169,75 @@ produced exceptions that looked like real findings.
 
 ## 5-minute video script
 
-**0:00–0:25 · The problem, in their own data.** Terminal, `pytest` running.
-"This is Razorpay's own published sample settlement report. Three settlements.
-Each one's members sum to its total exactly, in integer paise — including this
-one, five payments minus a refund, 395 paise. The fourth doesn't close, and
-that's not a bug in their data: it's an out-of-window settlement. My exception
-taxonomy was validated against someone else's data before I wrote a solver."
+Written to be said, not read — contractions, short sentences, talk to the
+camera like you're explaining it to a friend, not narrating a demo reel.
 
-**0:25–1:10 · Why this is hard, and why a wrong answer is worse than none.**
-"A merchant's bank statement shows one lump credit. Razorpay's dashboard shows
-340 transactions. Nobody joins them. And a wrong join is worse than no join —
-it produces a report that balances, so nothing downstream catches it. That's why
-the number I lead with isn't the match rate."
+**[0:00–0:20] Open on the problem.** *(Terminal, `pytest` already running
+against Razorpay's own sample file.)* "Okay so — this is Razorpay's own sample
+settlement report. Three settlements in here, and every one's payments and
+refunds add up to the total exactly, down to the paisa. The fourth one doesn't
+add up — and that's not a bug, that's just an out-of-window settlement. I
+checked my rules against their real data before I ever wrote a solver."
 
-**1:10–1:45 · `milaan run --trace`.** Live. Scorecard first, then one credit's
-trace. "Eighteen credits, 237 ledger rows. 80% on decidable credits, zero false
-matches. But look at how it gets there —" *(point at one trace line)* "— that's
-not a script, it's a loop: try a window, widen if nothing sums, narrow if too
-much does, stop when one answer survives. Every decision, replayable."
+**[0:20–0:55] Why this is actually hard.** "Here's the real problem. A
+merchant's bank statement shows one lump credit — say eight lakh rupees, one
+line, a garbled reference number. Razorpay's dashboard shows the three hundred
+forty individual payments that make it up. Nobody actually connects those two.
+And if you guess wrong, it's worse than not answering — a wrong match still
+balances on paper. Nothing downstream ever catches it."
 
-**1:45–2:25 · Why the loop exists, and what it did to me.** "A fixed window is
-provably wrong — too wide invites ties, too narrow excludes members, opposite
-failures. So I built a policy that reacts instead. It reported a false match
-within the hour: accepting the first window that looked unique, when a wider one
-hid a second answer. That's the exact thing I'd already forbidden a hint from
-doing three files away, and I did it anyway building the next layer. Fixed the
-same way — decide on the widest evidence, not the first."
+**[0:55–1:35] Show it running.** *(Run `milaan run --trace`.)* "This is MILAAN,
+live. Eighteen credits, two-thirty-seven ledger rows. Eighty percent match rate
+on the ones that are actually solvable, zero false matches. And watch this —"
+*(point at one trace line)* "— it's not just matching, it's deciding. Try a
+window; too narrow, widen it; too many matches, narrow it; stop the moment
+exactly one answer survives. Every decision's logged — you can replay it."
 
-**2:25–3:00 · The refusal, on screen.** Show an `AMBIGUOUS_COVER` with both
-witnesses. "Two different subsets sum to this credit exactly. I can't tell you
-which one is real, so I don't. Here are both. Subscription merchant, identical
-prices — the common case, not an edge case."
+**[1:35–2:10] The agent almost lied to me.** "I built that loop because someone
+asked me directly — is this actually an agent, or an if-else with extra steps?
+Fair question. A fixed window really was broken — too wide gives false ties,
+too narrow drops real payments. So I made it adaptive. And within an hour of
+turning it on, it gave me a false answer — it locked onto a narrow window
+without checking if a wider one hid a second possible match. Which is exactly
+the mistake I'd already written a hundred tests to prevent, three files away.
+Fixed it the same way: always check the widest window before you commit."
 
-**3:00–3:50 · Where the LLM is, and the number I didn't want.** Run
-`milaan hints`. "Ceiling on any model: **plus zero**. Uniqueness is decided on
-the full pool, so a hint can never break a tie — the property that makes it
-safe is what makes it useless here. And when I wired in a real API call, it
-crashed — wrong interface, then discovered it was about to make nine paid calls
-for two credits that could ever use one. Fixed both. `--live-hints` now makes
-exactly one call, on exactly the credit that needs it, and degrades cleanly
-when the key is bad. I could get a positive ceiling by weakening containment.
-It would be bought with wrong joins."
+**[2:10–2:40] The refusal, on screen.** *(Show an `AMBIGUOUS_COVER`, both
+witnesses.)* "Here's what a refusal looks like. Two different sets of
+transactions both add up to this credit exactly. I genuinely can't tell you
+which one's real, so I don't guess — I show you both. Not rare, either: that's
+just a subscription merchant charging the same price to a bunch of people."
 
-**3:50–4:30 · What broke.** "Twenty-seven incidents. Eight are my own words or
-conclusions being the defect, not my code. A hundred property tests missed a
-solver bug because no generator I wrote ever sampled a zero. My first run
-scored 0% and the solver was right every time. I proved no single rate fit
-Razorpay's fee and stopped one question short — someone else found the real
-answer in one line. And I lowered my own headline, 91.7% to 80%, because the
-higher number was excusing failures in its own denominator."
+**[2:40–3:25] The AI part, and the number I didn't want.** *(Run
+`milaan hints`.)* "Now the actual AI piece. I measured its ceiling — the best
+any model could ever do here — and it's zero. Plus zero. By the time a hint
+would matter, the answer's already uniquely decided or it isn't; a hint can't
+break a tie. And when I actually wired up a real API call, it crashed the
+first time — wrong method name. Fixed that, then found it would've made nine
+paid calls when only one could ever matter. Fixed both. Now it makes exactly
+one call, only when it's needed, and degrades cleanly if the key's bad."
 
-**4:30–5:00 · Limits.** "Eighteen credits, one seed. The grouping rule is my
-reading of Razorpay's T+2 cycle, not an observation of it. The narrations are
-synthetic. The fee model isn't — that's 25 real charges from their engine, and
-the agent's window policy is real code making real decisions, not a label. What
-I can defend is narrow and exact: given a ledger and credits grouped by a
-documented rule, it recovers the grouping 80% of the time and never once
-reported a join that wasn't real."
+**[3:25–4:05] What broke, honestly.** "Twenty-seven things broke building
+this, all logged with dates and commit hashes. Eight of those weren't code
+bugs — they were me being wrong. I asserted a bug that didn't exist. I scored
+a flat zero on my first real run and it turned out the solver was right the
+whole time, my test was wrong. I proved Razorpay's fee couldn't be one flat
+rate and then stopped one question short of the real two-part formula. I even
+caught myself once, right before shipping, about to publish a number that
+wasn't real."
 
-**Recording notes.** One take for `milaan run --trace` and `milaan hints` —
-both finish in under a second; `--live-hints` with a bad key adds about a
-second for the real HTTP round trip. Don't re-enact the ambiguous-cover moment
-or the agent's false-match story; both are stronger said plainly than acted
-out. Read the limits slide slower than feels natural.
+**[4:05–4:40] Limits, plainly.** "What I can't claim: this is eighteen
+credits, one seed, and the grouping rule is my best reading of Razorpay's
+settlement cycle, not something I observed directly. The narrations are
+synthetic. What I can claim, narrowly and exactly: given a ledger and credits
+grouped by a documented rule, this recovers the right grouping eighty percent
+of the time, and it has never once told me a wrong answer with confidence."
+
+**[4:40–5:00] Close.** "That's MILAAN. Probably not the flashiest agent in the
+room — but it's one that knows exactly when to shut up."
+
+**Recording notes.** One take covers `milaan run --trace` and `milaan hints` —
+both finish in under a second; a bad-key `--live-hints` run adds about a
+second for the real HTTP round trip. Don't re-enact the ambiguous-cover or
+false-match moments — say them plainly, they don't need a re-run. Slow down on
+the limits section; it's the part worth them actually hearing.
