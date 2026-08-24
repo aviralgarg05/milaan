@@ -1,0 +1,18 @@
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run the suite
+        run: uv run --with pytest --with openpyxl --with-editable . pytest tests/ -q
+      - name: The scorecard must reproduce, and report zero false matches
+        run: |
+          uv run --with openpyxl --with-editable . python -m milaan.cli run --quiet
+      - name: The hint layer's ceiling and containment must both still hold
+        run: |
+          uv run --with openpyxl --with-editable . python -m milaan.cli hints

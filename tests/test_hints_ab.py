@@ -33,26 +33,23 @@ def ab():
 def test_a_perfect_extractor_adds_nothing_and_that_is_the_finding(ab):
     """The ceiling on any model's contribution to this workload is zero.
 
-    Stronger than when first measured. After the capture-time ordering fix
-    (INCIDENTS.md #19) only two credits reach the blind layer at all, and
-    neither carries an opaque narration — so the hint layer is not merely
-    unhelpful here, it is **never invoked**. Both facts are asserted, because
-    "the ceiling is zero" and "the layer is unreachable" are different findings
-    and a future change could move either one.
+    The measurement is now properly supported. Under the agent (INCIDENTS.md
+    #23) the hint layer is consulted on every credit with an opaque narration,
+    not only on the blind-layer residue — the oracle is offered 4 lines and still
+    adds nothing. An intermediate version measured +0 while the layer was never
+    invoked at all, which measured reachability rather than usefulness; that is
+    no longer the case.
     """
     assert ab["O"]["matched"] == ab["N"]["matched"], (
         "if the oracle now helps, the interval layer or the budget changed — "
         "re-derive INCIDENTS.md #18 rather than quietly banking the improvement"
     )
-    assert ab["O"]["hints_offered"] == 0, (
-        "the hint layer is currently unreachable on this batch; if it is being "
-        "offered lines again, the residue reaching the blind layer has changed"
+    assert ab["O"]["hints_offered"] >= 4, (
+        "the oracle must actually be consulted for the ceiling to mean anything — "
+        "a +0 measured on a layer that was never invoked measures reachability, "
+        "not usefulness (INCIDENTS.md #18 addendum)"
     )
-    assert ab["N"]["opaque_narrations"] > 0, (
-        "opaque narrations must still exist in the batch — the layer is "
-        "unreachable because the interval layer resolves them first, not "
-        "because the corpus stopped containing hard narrations"
-    )
+    assert ab["N"]["opaque_narrations"] > 0
 
 
 def test_a_hostile_extractor_cannot_cause_a_wrong_join(ab):

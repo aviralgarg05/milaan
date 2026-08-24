@@ -228,6 +228,10 @@ def fee_for(amount_paise: int, *, observed_fee: int | None = None,
                            source="observed", confident=True)
 
     modelled = base_fee_two_component(amount_paise)
+    # There is no longer a low-confidence residue class. The two-component model
+    # reproduces all 25 observations, so the FEE_MODEL_RESIDUAL routing that
+    # existed while the anomaly was unexplained has been removed rather than left
+    # as unreachable code with a `suspect = False` literal in front of it.
     suspect = False
     return FeeEstimate(
         amount_paise, modelled, 0, source="modelled", confident=True,

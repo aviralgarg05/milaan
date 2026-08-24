@@ -62,10 +62,10 @@ model can beat it — its score is the *ceiling* on what any model could add.
 
 Two separate facts, and they are worth keeping apart:
 
-**Measured.** After the capture-time fix ([#19](INCIDENTS.md)) the interval layer
-resolves 16 of 18 credits, so only two reach the blind layer where a hint could
-act — and neither carries an opaque narration. The oracle was offered **zero
-lines**. The layer is not merely unhelpful here; it is never invoked.
+**Measured.** The agent consults the hint layer on every credit whose narration
+the grammar cannot read — the oracle is offered **4 lines** and adds **+0**. The
+hostile config is offered 9 and has **18** hallucinated claims dropped by
+grounding before they reach the solver, with zero false matches.
 
 **Predicted, not demonstrated by that run.** Had it been invoked, containment
 says it still could not have raised the match rate: uniqueness is adjudicated on
@@ -116,6 +116,49 @@ merchant knows they were paid what they were owed — and because a *wrong* join
 worse than no join. A wrong join produces a clean-looking reconciliation report
 that balances, so nothing downstream ever catches it. It is a silent financial
 misstatement.
+
+## The agent
+
+A fixed candidate window is the wrong design, and that is what makes this an
+agent rather than a pipeline with a hopeful label.
+
+A bank credit is composed of transactions captured in some interval before it,
+and the engine does not know that interval. Too wide and a neighbouring
+settlement enters the pool, several subsets tie, and the honest verdict is
+`AMBIGUOUS`. Too narrow and a genuine member is excluded, nothing sums, and the
+honest verdict is `NO_COVER`. **Those two failures point in opposite
+directions**, so no single window is right for every credit — and the correct
+design is to react to how the last attempt failed:
+
+```
+NO_COVER  → the pool is too small. Widen.
+AMBIGUOUS → the pool is too big.  Narrow, or refuse.
+UNIQUE    → adjudicate at the widest window, then stop.
+```
+
+The policy is **deterministic**. No model is consulted, because the signal —
+*which way* the last attempt failed — is unambiguous, and a language model could
+only add noise to a decision arithmetic already answers. That is the
+"where you chose not to use one" line drawn at the level of the agent's own
+reasoning, not just its tools.
+
+It is bounded (a finite ascending ladder, each rung tried once, a per-credit
+action budget) and replayable:
+
+```bash
+uv run --with openpyxl --with-editable . python -m milaan.cli run --trace
+```
+
+```
+cr_0000  MATCHED          ±2d  TRY_INTERVAL → WIDEN → TRY_INTERVAL → ACCEPT
+cr_0011  AMBIGUOUS_COVER  ±2d  TRY_INTERVAL → WIDEN → TRY_INTERVAL → ESCALATE
+```
+
+Credits resolve across four different windows at ~6.7 decisions each. **Find
+narrow, adjudicate wide**: a cover found at a tight window is a candidate, and
+uniqueness is always decided at the widest window on the ladder. Skipping that
+step raised the match rate to 86.7% and produced a real wrong join
+([#24](INCIDENTS.md)) — the 6.7 points were bought by looking at less evidence.
 
 ## Why this is not just fuzzy matching
 
@@ -242,7 +285,9 @@ quietly grading the engine on a curve (#20).
 | Interval layer | **done** — carries 16 of 18 credits |
 | Sealed ground-truth generator | **done**, seed + digest pinned in the test suite |
 | Batch runner, match rate, exception list | **done** — `milaan run` |
+| Agent policy loop + trace | **done** — `milaan run --trace` |
 | Hint-layer A/B (none / perfect / hostile) | **done** — `milaan hints`, ceiling is +0 |
+| CI (tests + scorecard + hint A/B on every push) | **done** |
 | Anchor layer (UTR → settlement join) | **not built** — see LIMITS.md |
 | Perturbed-interval layer | **not built** — diagnosed as the wrong fix, see #19 |
 | 5-minute pitch video | **not started** |

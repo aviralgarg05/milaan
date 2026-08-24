@@ -43,10 +43,14 @@ assumed**: 25 real captured test-mode payments established that Razorpay charges
 on 4 of 25 payments, which is exactly the error that turns a valid cover into an
 unexplained exception.
 
+The agent is a real policy loop, not a pipeline with a label: a fixed candidate
+window is genuinely wrong (too wide invites ties, too narrow excludes members —
+opposite failures), so it chooses the window by reacting to how the last attempt
+failed, across ~6.7 bounded, replayable decisions per credit.
+
 Where an LLM is used is deliberately narrow, and its contribution is **measured
-rather than claimed**: after the interval layer resolves 16 of 18 credits, the
-hint layer is offered **zero lines** and its ceiling on this workload is **+0**.
-That zero is published rather than engineered away.
+rather than claimed**: a *perfect* extractor, offered 4 lines, adds **+0**. That
+zero is published rather than engineered away.
 
 ---
 

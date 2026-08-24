@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+SCOPE OF THIS LICENCE
+
+The MIT grant above covers the source code, tests and documentation authored for
+this project.
+
+It does NOT cover the files under `data/razorpay-samples/`, which are Razorpay's
+own published sample reports, redistributed unmodified for verification purposes
+with their source URLs recorded in `data/razorpay-samples/SOURCES.md`. Those
+files remain Razorpay's; no licence to them is granted or implied here.
+`docs/00-brief.md` likewise quotes Razorpay's published buildathon copy verbatim
+for reference and is quoted, not licensed.

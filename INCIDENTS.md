@@ -989,3 +989,104 @@ property claim in the repo.
 sentence describing it claimed more than the code delivered. That is now six
 entries in this log where my own words were the defect, against fifteen where the
 code was — and the words fail in the flattering direction every time.
+
+---
+
+### #23 — it was not an agent, and relabelling it would have been the wrong fix
+
+**Date** 24 Aug · **Fixed by** `src/milaan/agent.py` · **Pinned by** `tests/test_agent.py`
+
+**The finding.** Track 04 asks for an *agent*. An auditor read the control flow
+and said plainly that this was not one: `filter pool → try interval → else try
+blind → emit verdict`. A straight line. No loop, no state, no policy, no
+decision — the layered escalation was an `if/else`, not a strategy.
+
+That was correct, and the tempting response was to write a paragraph arguing that
+"agent" is a loose word and that Track 04's own examples ("tax-line matcher",
+"multi-source reconciliation") are matching engines. That argument is even
+*true*. It is still the wrong response, because it defends the label instead of
+asking whether the design was right.
+
+**It was not.** The fixed ±6-day candidate window was the weakest thing in the
+system and I had never questioned it. A bank credit is composed of transactions
+captured in some interval, and the engine does not know that interval:
+
+```
+window too WIDE   -> neighbouring settlements enter the pool -> ties -> AMBIGUOUS
+window too NARROW -> a genuine member is excluded            -> nothing sums -> NO_COVER
+```
+
+Those two failure modes point in **opposite directions**. There is no single
+window that is right for every credit, so a fixed one is indefensible — and the
+correct design is precisely the thing an agent is: observe how the last attempt
+failed, decide what to try next, try again.
+
+    NO_COVER  -> the pool is too small. Widen.
+    AMBIGUOUS -> the pool is too big.  Narrow, or refuse.
+    UNIQUE    -> adjudicate, then stop.
+
+**Deterministic on purpose.** No model is consulted in the policy. The signal —
+*which way* the last attempt failed — is unambiguous, and a language model could
+only add noise to a decision arithmetic already answers. That is the
+"where you chose not to use one" boundary drawn at the level of the agent's own
+reasoning, not merely its tools.
+
+**Bounded and auditable.** The window ladder is finite and ascending, each rung
+is tried at most once, there is a per-credit action budget, and every episode
+returns its full `(observation, action, outcome)` sequence. `milaan run --trace`
+prints it. An agent whose decisions cannot be replayed has no business near
+money.
+
+**What it changed.** Match rate is unchanged at 80% on decidable credits — the
+agent did not buy a better number. What it bought is *correct exception classes*:
+`ON_HOLD` and `ZERO_NET` now return `NO_COVER`, which is the true answer for a
+credit whose member was withheld, where the fixed window reported the vaguer
+`AMBIGUOUS_COVER`. Credits resolve across four different windows (±2 to ±6) at
+6.7 actions each, so the loop is doing real work rather than decorating a
+straight line.
+
+**And it made the LLM layer reachable again.** Under the old flow hints were
+consulted only in the blind branch, which almost never fired, so the +0 ceiling in
+#18 was partly a measurement of unreachability. The agent consults the hint layer
+on every credit with an opaque narration: the oracle is now offered **4 lines**
+and still adds **+0**. Same conclusion, properly supported.
+
+---
+
+### #24 — the agent reported a wrong join within an hour of existing
+
+**Date** 24 Aug · **Fixed by** find-narrow-adjudicate-wide · **Pinned by** `test_uniqueness_is_adjudicated_at_the_widest_window_not_the_narrowest`
+
+**Symptom.** First run of the agent: decidable match rate up from 80% to **86.7%**,
+and **one FALSE MATCH**. The number that must be zero was not zero.
+
+```
+FALSE MATCH cr_0011 planted=IDENTICAL_AMOUNTS window=±2d cover=6 truth=6
+  actions: TRY_INTERVAL → WIDEN → TRY_INTERVAL → ACCEPT
+```
+
+**Cause, and it is the same mistake in a new costume.** The agent accepted the
+first window that produced a *unique* cover. At ±2d the pool contained six
+identical amounts belonging to a neighbouring settlement, and they formed the only
+contiguous run summing to the credit — unique, exact, and wrong. Widening would
+have revealed the true run and shown the credit was ambiguous.
+
+Narrowing a pool until a competing cover disappears is **manufacturing
+uniqueness**. It is the precise move `hints/grounding.py` forbids a hint from
+making, with an entire module and 34 tests devoted to preventing it. I wrote that
+guarantee, then built an agent whose policy did it structurally.
+
+**Fix.** Find narrow, adjudicate wide. A cover discovered at a tight window is a
+*candidate*; uniqueness is always decided at the widest window on the ladder, and
+if a competitor appears there the credit is refused with both witnesses. Match
+rate fell back from 86.7% to 80.0% and false matches returned to zero.
+
+**The 6.7 points were not real.** They were bought by looking at less evidence,
+which is the one way to raise a match rate that a false-match count is designed
+to catch. It caught it — on the first run, before the change was committed.
+
+**Third time this exact shape has appeared:** hints could have manufactured
+uniqueness (prevented by design), the interval layer could have (prevented by
+full-pool adjudication), and the agent's window policy actually did. It is the
+central hazard of this problem domain, and apparently not one I recognise on
+sight — I have to be shown it each time by a number going the wrong way.

@@ -95,6 +95,10 @@ neither has an opaque narration. **Safety: soundness holds unconditionally**
 (every accepted cover is exact); the subset property holds except under
 `BUDGET_EXCEEDED`, which is documented rather than glossed (INCIDENTS.md #22).
 
+**The +0 is now properly supported.** An intermediate version measured +0 while
+the layer was never invoked at all, which measures reachability rather than
+usefulness. Under the agent it is consulted on 4 credits and still adds nothing.
+
 **The layer is an optional extra and the core does not depend on it.** `anthropic`
 is not a base dependency; `pip install -e ".[hints]"` is required to exercise it
 against a model, and it has never been run against one — there is no API key in

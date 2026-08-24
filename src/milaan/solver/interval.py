@@ -64,6 +64,12 @@ def find_intervals(values: list[int], target: int, *, max_covers: int = 8) -> In
     """
     if not all(isinstance(v, int) for v in values):
         raise TypeError("interval search operates on integer paise only")
+    if max_covers < 2:
+        # At max_covers=1 the search returns after the first hit, so `unique`
+        # would be True on a provably ambiguous input — the caller could not tell
+        # one cover from many, which is the distinction this whole module exists
+        # to preserve.
+        raise ValueError("max_covers must be >= 2 to distinguish unique from ambiguous")
 
     # prefix[i] is the sum of the first i values, so the run [i, j) sums to
     # prefix[j] - prefix[i]. Sums are exact because everything is an int.

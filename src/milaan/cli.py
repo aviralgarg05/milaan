@@ -36,6 +36,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from .agent import ReconciliationAgent
 from .fees import base_fee_two_component
 from .hints.grounding import Candidate, resolve
 from .narration.grammar import extract
@@ -61,63 +62,32 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
     hinted = rescued = rejected_claims = 0
     started = time.perf_counter()
 
+    agent = ReconciliationAgent(budget=budget)
+
     for credit in batch.credits:
         vd = date.fromisoformat(credit.value_date)
 
-        # The candidate pool is everything captured near the value date. The
-        # settlement_id is never read here — that column is the answer key.
-        pool = [
-            Candidate(
-                entity_id=r.entity_id,
-                net_paise=_settling_value(r.net_paise),
-                day_offset=abs((date.fromisoformat(r.captured_on) - vd).days),
-                reference=r.captured_at,      # capture timestamp, the ordering key
-            )
-            for r in ledger
-            if abs((date.fromisoformat(r.captured_on) - vd).days) <= WINDOW_DAYS
-            and not r.on_hold
+        # The agent gets the raw ledger rows and picks its own window. The
+        # settlement_id is never passed — that column is the answer key.
+        rows_in = [
+            (r.entity_id, _settling_value(r.net_paise), r.captured_at,
+             date.fromisoformat(r.captured_on))
+            for r in ledger if not r.on_hold
         ]
 
         fields = extract(credit.narration)
         t0 = time.perf_counter()
 
-        # LAYER 1 — interval. Settlements batch by capture time, so a cover is
-        # almost always a contiguous run in capture order. Linear, and specific
-        # enough that a collision is informative rather than inevitable.
-        # Capture time is the ordering a settlement actually follows. Sorting by
-        # id instead put one settlement's refunds after the next settlement's
-        # payments and broke contiguity — INCIDENTS.md #19.
-        ordered = sorted(pool, key=lambda c: (c.reference or "", c.entity_id))
-        iv = find_intervals([c.net_paise for c in ordered], credit.amount_paise)
+        hint = None
+        if proposer is not None and fields.is_opaque:
+            hint = proposer.hint_for(fields, vd)
+            if hint is not None:
+                hinted += 1
+                rejected_claims += len(hint.rejected_claims)
 
-        layer = "interval"
-        if iv.unique:
-            outcome, proposed_ids, second = (
-                Outcome.UNIQUE, tuple(ordered[i].entity_id for i in iv.covers[0]), ())
-        elif iv.ambiguous:
-            outcome, proposed_ids = Outcome.AMBIGUOUS, tuple(
-                ordered[i].entity_id for i in iv.covers[0])
-            second = tuple(ordered[i].entity_id for i in iv.covers[1])
-        else:
-            # LAYER 2 — blind cover. Only the residue reaches here, and this is
-            # the only place a hint can act: it narrows the search, while the
-            # verdict is still adjudicated on the full pool (hints/grounding.py).
-            layer = "blind"
-            hint = None
-            if proposer is not None and fields.is_opaque:
-                hint = proposer.hint_for(fields, vd)
-                if hint is not None:
-                    hinted += 1
-                    rejected_claims += len(hint.rejected_claims)
-            r = resolve(pool, credit.amount_paise, budget=budget, hint=hint)
-            outcome, proposed_ids, second = r.outcome, r.cover, r.second_cover
-            if r.used_hint:
-                rescued += 1
-
-        class _R:
-            pass
-        result = _R()
-        result.outcome, result.cover, result.second_cover = outcome, proposed_ids, second
+        episode = agent.run(credit_id=credit.credit_id, target_paise=credit.amount_paise,
+                            value_date=vd, rows=rows_in, fields=fields)
+        result, layer = episode, episode.layer
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
         truth = frozenset(
@@ -140,11 +110,14 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
             "amount_paise": credit.amount_paise,
             "planted": credit.planted_class,
             "verdict": verdict,
-            "pool_size": len(pool),
+            "pool_size": episode.steps[-1].observation.pool_size if episode.steps else 0,
             "cover_size": len(proposed),
             "truth_size": len(truth),
             "narration_opaque": fields.is_opaque,
             "layer": layer,
+            "window": episode.final_window,
+            "actions": episode.actions,
+            "steps": len(episode.steps),
             "ms": round(elapsed_ms, 1),
         })
 
@@ -190,10 +163,15 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
         "decidable_credits": len(decidable),
         "undecidable_credits": len(undecidable),
         "correctly_refused": correctly_refused,
+        "avg_actions_per_credit": round(sum(r["steps"] for r in rows)/len(rows), 2) if rows else 0,
+        "by_window": dict(Counter(r["window"] for r in rows)),
         "hints_offered": hinted,
         "hints_rescued": rescued,
         "hint_claims_rejected": rejected_claims,
         "opaque_narrations": sum(1 for r in rows if r["narration_opaque"]),
+        # A frozenset of tuples is not JSON-serialisable, which crashed `--json`
+        # silently after the scorecard had already printed. Kept as a set for the
+        # A/B subset comparison, and excluded from the JSON dump below.
         "accepted_covers": frozenset(
             (r["credit_id"], r["verdict"]) for r in rows if r["verdict"] == "MATCHED"),
         "by_layer": dict(Counter(r["layer"] for r in rows)),
@@ -217,8 +195,12 @@ def print_scorecard(score: dict, batch: Batch) -> None:
     print("─" * w)
     print(f"  MATCH RATE       {score['match_rate']:.1%}  "
           f"({score['matched']}/{score['total_credits']})")
+    # The numerator must be matched-among-decidable, not the global matched
+    # count — printing the global one beside a decidable denominator is the same
+    # denominator-mismatch bug incident #20 was written about.
+    matched_decidable = round(score["match_rate_decidable"] * score["decidable_credits"])
     print(f"  … on decidable credits        {score['match_rate_decidable']:.1%}  "
-          f"({score['matched']}/{score['decidable_credits']})")
+          f"({matched_decidable}/{score['decidable_credits']})")
     print(f"  CORRECTLY REFUSED {score['correctly_refused']}/{score['undecidable_credits']}"
           "  planted-undecidable credits where refusing IS the right answer")
     print()
@@ -259,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--seed", type=int, default=20260823)
     run.add_argument("--settlements", type=int, default=18)
     run.add_argument("--quiet", action="store_true", help="scorecard only")
+    run.add_argument("--trace", action="store_true",
+                     help="print the agent's decision sequence for every credit")
     run.add_argument("--json", type=Path, help="write the full result to a file")
 
     ab = sub.add_parser("hints", help="A/B the hint layer: none vs perfect vs hostile")
@@ -325,12 +309,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nMILAAN · reconciling {len(batch.credits)} bank credits "
               f"against {len(batch.ledger)} ledger rows\n")
     score = run_batch(batch, verbose=not args.quiet)
+    if getattr(args, "trace", False):
+        print("\n  AGENT TRACE — every decision, replayable")
+        print("  " + "─" * 70)
+        for r in score["rows"]:
+            print(f"  {r['credit_id']}  {r['verdict']:<16} ±{r['window']}d  "
+                  f"pool={r['pool_size']:<4} {r['actions']}")
     print_scorecard(score, batch)
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
+        dumpable = {k: v for k, v in score.items() if k != "accepted_covers"}
         args.json.write_text(json.dumps(
-            {"seed": batch.seed, "batch_sha256": batch_hash(batch), **score}, indent=1))
+            {"seed": batch.seed, "batch_sha256": batch_hash(batch), **dumpable}, indent=1))
         print(f"  full result → {args.json}\n")
 
     return 1 if score["false_matches"] else 0
