@@ -31,7 +31,9 @@ Pinned by `tests/test_sample_reports.py`, which runs with no key and no network.
 ### Live test-mode entities
 Every order, payment link, payment and refund minted during a run is a real
 Razorpay test-mode entity with a Razorpay-issued id, timestamp, status **and
-fee**. A reviewer with their own test key can fetch any id in `results/*.json`.
+fee**. Note that Razorpay test-mode entities are scoped to the account that created
+them, so a *third party* using their own key would get 404 on these ids — they
+are verifiable by me, and by anyone I share the account with, not by the public.
 
 Razorpay independently assigns what I cannot predict or control: the entity ids,
 the `fee`, the capture timestamps, and — if settlements ever materialise — the
@@ -41,17 +43,22 @@ column. MILAAN never decides which payment belongs to which settlement.
 
 ### Documented failure modes
 The twenty error-scenario cards in `data/test-cards.md` are Razorpay's, with
-documented outcomes. The `failed payment` exception class is generated from them
-rather than invented, so those labels are not mine to be trusted about.
+documented outcomes. These were collected as a source for a `failed payment` exception class. **That
+class was never built** — the generator plants six classes and none of them is
+it. The cards are recorded here because they are a real, reusable finding about
+Razorpay's test surface, not because MILAAN uses them.
 
 ---
 
 ## 2. Real, and published — a third party authored it
 
 Bank narration formats, drawn from statement samples the banks themselves
-publish. Provenance is tracked per format with a captured-real /
-vendor-published-sample / reconstructed column, and **unverified formats are
-excluded from the headline number.**
+publish. Every format in `NARRATION_FORMATS` is reconstructed from published bank
+statement layouts. There is no per-format provenance column and nothing is
+excluded from the headline number — an earlier version of this file described
+both as if they existed (INCIDENTS.md #21). Since no format is captured-real,
+there is nothing to separate: the whole narration corpus is synthetic and the
+headline number rests on it.
 
 There are no external human contributors to this corpus. Held-out split is
 therefore **by format, not by bank**, and `n` is stated out loud in the video

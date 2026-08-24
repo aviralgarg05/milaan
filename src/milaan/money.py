@@ -91,6 +91,33 @@ class Paisa(int):
 
     __rtruediv__ = __truediv__
 
+    # Comparison was not blocked in the first version: Paisa inherits int's rich
+    # comparisons, which silently accept a float. `Paisa(100) == 1.0` answering
+    # False is harmless; `Paisa(100) < 1.5` answering True is a money comparison
+    # against a rupee value that reads as correct.
+    def __eq__(self, other: Any) -> bool:
+        self._check(other, "compare")
+        return int(self) == other
+
+    def __lt__(self, other: Any) -> bool:
+        self._check(other, "compare")
+        return int(self) < other
+
+    def __le__(self, other: Any) -> bool:
+        self._check(other, "compare")
+        return int(self) <= other
+
+    def __gt__(self, other: Any) -> bool:
+        self._check(other, "compare")
+        return int(self) > other
+
+    def __ge__(self, other: Any) -> bool:
+        self._check(other, "compare")
+        return int(self) >= other
+
+    def __hash__(self) -> int:
+        return int.__hash__(self)
+
     def __repr__(self) -> str:
         return f"Paisa({int(self)})"
 

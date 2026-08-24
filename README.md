@@ -258,7 +258,7 @@ labelled as mine — is in [`DATA.md`](DATA.md).
 ## What broke
 
 [`INCIDENTS.md`](INCIDENTS.md) — written as it happened, with commit hashes and
-the regression test that pins each one. **Twenty-one entries**, and the pattern in
+the regression test that pins each one. ****25 entries****, and the pattern in
 them is the point: six are cases where the thing that broke was my own
 conclusion rather than my code.
 
