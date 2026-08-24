@@ -36,7 +36,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from .agent import Action, ReconciliationAgent
+from .agent import ReconciliationAgent
 from .fees import base_fee_two_component
 from .hints.grounding import Candidate, resolve
 from .narration.grammar import extract
@@ -78,25 +78,32 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
         fields = extract(credit.narration)
         t0 = time.perf_counter()
 
-        # Computed eagerly and passed into the agent, but it can only ever
-        # matter inside TRY_BLIND (see agent.py). Counting it as "offered" here,
-        # before the agent has run, would double-count: a credit the interval
-        # layer resolves never reaches the branch where a hint could act, no
-        # matter how confidently it was proposed. So "offered" is measured
-        # AFTER the episode, from whether TRY_BLIND actually appears in its
-        # trace — see below.
-        hint = None
-        if proposer is not None and fields.is_opaque:
-            hint = proposer.hint_for(fields, vd)
-            if hint is not None:
-                rejected_claims += len(hint.rejected_claims)
+        # A lazily-invoked provider, not a pre-computed value (INCIDENTS.md
+        # #27, second half). The old eager version called the proposer for
+        # every opaque narration regardless of whether the episode would ever
+        # reach TRY_BLIND — measured directly at 9 calls for 2 actual uses.
+        # This closure is called at most once, from inside agent.run(), and
+        # only if the agent's own policy decides TRY_BLIND is necessary.
+        offered = {"hint": None, "called": False}
+
+        def _provide_hint(_fields=fields, _proposer=proposer):
+            offered["called"] = True
+            if _proposer is None or not _fields.is_opaque:
+                return None
+            h = _proposer.hint_for(_fields, vd)
+            offered["hint"] = h
+            if h is not None:
+                nonlocal rejected_claims
+                rejected_claims += len(h.rejected_claims)
+            return h
 
         episode = agent.run(credit_id=credit.credit_id, target_paise=credit.amount_paise,
-                            value_date=vd, rows=rows_in, fields=fields, hint=hint)
+                            value_date=vd, rows=rows_in, fields=fields,
+                            hint_provider=_provide_hint)
         result, layer = episode, episode.layer
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        if hint is not None and any(s.action is Action.TRY_BLIND for s in episode.steps):
+        if offered["called"] and offered["hint"] is not None:
             hinted += 1
             if episode.hint_rescued:
                 rescued += 1
@@ -255,6 +262,16 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--trace", action="store_true",
                      help="print the agent's decision sequence for every credit")
     run.add_argument("--json", type=Path, help="write the full result to a file")
+    run.add_argument(
+        "--live-hints", action="store_true",
+        help=(
+            "consult a real Anthropic model on opaque narrations reaching "
+            "TRY_BLIND, instead of leaving the hint layer unconsulted. "
+            "Requires the [hints] extra and a credential (ANTHROPIC_API_KEY or "
+            "`ant auth login`). Falls back to no hints, loudly, if neither is "
+            "present -- it never silently no-ops."
+        ),
+    )
 
     ab = sub.add_parser("hints", help="A/B the hint layer: none vs perfect vs hostile")
     ab.add_argument("--seed", type=int, default=20260823)
@@ -316,10 +333,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"written   {args.out}  (answer key withheld)")
         return 0
 
+    proposer = None
+    if getattr(args, "live_hints", False):
+        from .hints.llm import AnthropicProposer, default_proposer
+
+        proposer = default_proposer()
+        kind = type(proposer).__name__
+        if kind == "OfflineProposer":
+            print(
+                "  --live-hints requested but no Anthropic credential was found "
+                "(checked ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ant CLI profile) "
+                "-- proceeding with the hint layer unconsulted, exactly as without "
+                "the flag. Set MILAAN_REQUIRE_MODEL=1 to make this a hard error "
+                "instead.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"  --live-hints: consulting {proposer.model} on opaque "
+                  f"narrations reaching TRY_BLIND", file=sys.stderr)
+
     if not args.quiet:
         print(f"\nMILAAN · reconciling {len(batch.credits)} bank credits "
               f"against {len(batch.ledger)} ledger rows\n")
-    score = run_batch(batch, verbose=not args.quiet)
+    score = run_batch(batch, verbose=not args.quiet, proposer=proposer)
+    if proposer is not None and hasattr(proposer, "stats") and proposer.stats.calls:
+        st = proposer.stats.summary()
+        print(f"\n  LIVE MODEL CALLS  {st['calls']} calls, {st['errors']} errors, "
+              f"₹{st['total_cost_inr']:.4f} total, "
+              f"p50 {st['latency_p50_ms']:.0f}ms / p99 {st['latency_p99_ms']:.0f}ms",
+              file=sys.stderr)
     if getattr(args, "trace", False):
         print("\n  AGENT TRACE — every decision, replayable")
         print("  " + "─" * 70)

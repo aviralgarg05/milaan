@@ -153,14 +153,24 @@ class ReconciliationAgent:
 
     def run(self, *, credit_id: str, target_paise: int, value_date: date,
             rows: list[tuple[str, int, str, date]], fields: NarrationFields,
-            hint=None) -> Episode:
+            hint_provider=None) -> Episode:
         """Resolve one credit. `rows` is (entity_id, net_paise, captured_at, captured_on).
 
-        `hint` is consulted ONLY inside TRY_BLIND — the interval layer never sees it,
-        because interval search has no hint-shaped input to accept and does not need
-        one. This is the sole place the LLM layer's output can reach the solver, and
-        it goes through `hints.grounding.resolve`, whose containment guarantee is
-        unchanged by routing through the agent instead of being called directly.
+        `hint_provider`, if given, is a zero-argument callable returning a
+        `GroundedHint | None`. It is invoked AT MOST ONCE, and only from inside
+        `TRY_BLIND` — the interval layer never sees a hint and has no hint-shaped
+        input to accept.
+
+        It is a callable rather than a pre-computed value on purpose
+        (INCIDENTS.md #27, second half). Computing the hint before calling
+        `run()` means calling it for every opaque narration, whether or not the
+        episode ever reaches `TRY_BLIND` — measured directly, 9 of 9 opaque
+        narrations triggered a call while only 2 episodes ever used one. With a
+        real API key that is 7 wasted paid calls out of 9 for a batch this
+        size, and it is exactly the failure mode the module's own docstring
+        warns against: spending a model call where the answer was never going
+        to be consulted. Making the caller pass a callback instead of a value
+        means the cost is paid only when it can possibly matter.
         """
         ep = Episode(credit_id=credit_id)
         rung = 0
@@ -235,6 +245,7 @@ class ReconciliationAgent:
                 continue
 
             if action is Action.TRY_BLIND:
+                hint = hint_provider() if hint_provider is not None else None
                 r = resolve(pool, target_paise, budget=self.budget, hint=hint)
                 if r.used_hint:
                     ep.hint_rescued = True

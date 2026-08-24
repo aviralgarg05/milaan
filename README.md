@@ -69,7 +69,7 @@ oracle is consulted on **zero** of them: it abstains where there is no date to
 read, and the other credit reaching `TRY_BLIND` is not opaque at all, so the
 hint layer's own precondition excludes it before the oracle is asked. The
 hostile config, which fabricates regardless of content, is offered **1** and has
-**18** hallucinated claims dropped by grounding before they reach the solver,
+**2** hallucinated claims dropped by grounding before they reach the solver,
 with zero false matches. (An earlier version of this paragraph said "offered 4
 lines" — the pre-fix count, caught before commit; INCIDENTS.md #25.)
 
@@ -82,6 +82,22 @@ the malign configuration and the 33 containment tests, not on the +0 above — t
 That is [incident #18](INCIDENTS.md). The zero is published rather than
 engineered away: the only route to a positive number is weakening containment,
 which buys it with the wrong joins this project exists to prevent.
+
+**To actually try it against a real model:**
+
+```bash
+pip install -e ".[hints]"
+export ANTHROPIC_API_KEY=sk-ant-...
+uv run --with openpyxl --with-editable . python -m milaan.cli run --live-hints
+```
+
+No key, no `[hints]` extra, or `MILAAN_REQUIRE_MODEL` unset: it falls back to
+no hints and completes normally, printing why on stderr — never a silent
+no-op. This project has no valid credential of its own, so the request path,
+the failure path (a bad key produces exactly one real HTTPS call and a caught
+`AuthenticationError`), and the wiring between the CLI and the layer are all
+verified end to end ([#26](INCIDENTS.md)); a genuine model response is the one
+thing that has not been.
 
 The test suite is the other half of the argument:
 

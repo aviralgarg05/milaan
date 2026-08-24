@@ -108,10 +108,40 @@ class CallStats:
 
 
 class HintProposer:
-    """Interface. Anything that can read a narration and propose a typed hint."""
+    """Interface. Anything that can read a narration and propose a typed hint.
+
+    Subclasses implement `propose()` — read a narration, return a raw, possibly
+    wrong `Hint`. `hint_for()` is the method callers actually use: it wraps
+    `propose()` with grounding, so every proposer presents the same interface
+    `hints.grounding.resolve()` and `cli.run_batch()` consume, and no caller can
+    accidentally use an ungrounded `Hint` directly.
+
+    This split exists because of a real bug (INCIDENTS.md #27): `run_batch()`
+    was written against `eval/hints_ab.py`'s stand-in proposers, which expose
+    `hint_for(fields, value_date) -> GroundedHint | None` directly. This class
+    only exposed `propose(fields) -> Hint`. The two interfaces never matched, so
+    a real `AnthropicProposer` — or even `OfflineProposer` — passed to
+    `run_batch()` crashed immediately with `AttributeError: no attribute
+    'hint_for'`, regardless of whether a model call would have succeeded. The
+    AI layer was unreachable for a reason that had nothing to do with API keys.
+    """
 
     def propose(self, fields: NarrationFields) -> Hint:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def hint_for(self, fields: NarrationFields, value_date) -> "GroundedHint | None":
+        """Read a narration and return a grounded hint, or None to abstain.
+
+        `value_date` is accepted for interface compatibility with the
+        `eval/hints_ab.py` proposers but is unused here — nothing in this
+        module's hints are date-relative the way `OracleProposer`'s are.
+        """
+        from .grounding import ground  # local import: grounding imports schema, not llm
+
+        raw = self.propose(fields)
+        if raw.unparseable:
+            return None  # explicit abstention or a failed call; not "offered"
+        return ground(raw, fields.raw)
 
     stats: CallStats
 
@@ -200,13 +230,58 @@ class AnthropicProposer(HintProposer):
         )
 
 
-def default_proposer(model: str = DEFAULT_MODEL) -> HintProposer:
-    """An Anthropic proposer if credentials exist, an abstaining one otherwise.
+def _looks_like_credentials_exist() -> bool:
+    """A cheap, honest guess at whether a real Anthropic credential is present.
 
-    Credential resolution is the SDK's, not ours: an unset ANTHROPIC_API_KEY does
-    not mean there are no credentials (an `ant auth login` profile also works),
-    so construction is attempted and only a hard failure falls back to offline.
+    This is NOT what it looks like at first glance. `anthropic.Anthropic()`
+    does not raise when no credential exists — it constructs successfully with
+    `api_key=None` and only fails on the first actual request (this was verified
+    directly: constructing with a fully-cleared environment still succeeds).
+    So "try to construct, fall back on failure" — the obvious-looking pattern,
+    and what an earlier version of this function did — never falls back,
+    because construction never fails. `default_proposer()` would have silently
+    returned a proposer that could never work, for every caller who has no key,
+    with the failure only surfacing per-narration inside `propose()`'s own
+    try/except as a quiet abstention. Not incorrect, exactly — `propose()`
+    degrades gracefully either way — but the docstring's claim of an upfront
+    fallback was simply false, and nothing tested it (`hints/llm.py` had zero
+    test coverage before this was found).
+
+    This checks the two credential env vars the SDK itself resolves first
+    (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`) plus the on-disk OAuth profile
+    `ant auth login` writes. It cannot detect Workload Identity Federation or
+    validate that a present credential is actually valid — those require an
+    API call, which is exactly the cost this function exists to avoid paying
+    up front. A present-but-invalid credential still degrades gracefully via
+    `propose()`'s per-call error handling.
     """
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return True
+    config_dir = os.environ.get(
+        "ANTHROPIC_CONFIG_DIR",
+        os.path.expanduser("~/.config/anthropic"),
+    )
+    try:
+        return any(os.scandir(os.path.join(config_dir, "credentials")))
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+
+
+def default_proposer(model: str = DEFAULT_MODEL) -> HintProposer:
+    """An Anthropic proposer if a credential is plausibly present, an abstaining one otherwise.
+
+    See `_looks_like_credentials_exist` for exactly what "plausibly" means and
+    why this checks rather than merely trying to construct and catching a
+    failure that will not happen.
+    """
+    if not _looks_like_credentials_exist():
+        if os.environ.get("MILAAN_REQUIRE_MODEL"):
+            raise RuntimeError(
+                "MILAAN_REQUIRE_MODEL is set but no Anthropic credential was "
+                "found (checked ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, and "
+                "the ant CLI's on-disk profile)"
+            )
+        return OfflineProposer()
     try:
         return AnthropicProposer(model)
     except Exception:

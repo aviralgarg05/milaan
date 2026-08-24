@@ -95,12 +95,30 @@ neither has an opaque narration. **Safety: soundness holds unconditionally**
 (every accepted cover is exact); the subset property holds except under
 `BUDGET_EXCEEDED`, which is documented rather than glossed (INCIDENTS.md #22).
 
-**The +0 is now properly supported.** An intermediate version measured +0 while
-the layer was never invoked at all, which measures reachability rather than
-usefulness. Under the agent it is consulted on 4 credits and still adds nothing.
+**The +0 is real, and it is now precisely a statement about reachability.**
+Only 2 of 18 episodes ever reach `TRY_BLIND`, the one branch that can use a
+hint, and on this batch the oracle — a perfect extractor — is consulted on
+**zero** of them: it abstains on the one that is opaque, and the hint layer's
+own precondition excludes the other before the oracle is asked at all. That
+number used to read "4" — the pre-fix count from before the hint was made
+lazy (INCIDENTS.md #26); the correction lowered it, not raised it.
 
-**The layer is an optional extra and the core does not depend on it.** `anthropic`
-is not a base dependency; `pip install -e ".[hints]"` is required to exercise it
-against a model, and it has never been run against one — there is no API key in
-this project. Its behaviour is characterised entirely by the oracle and malign
-stand-ins.
+**The layer is an optional extra, the core does not depend on it, and the
+wiring is now verified end to end.** `anthropic` is not a base dependency;
+`pip install -e ".[hints]"` is required. `milaan run --live-hints` is the real
+entry point — it did not exist until this was checked directly, because
+nothing had ever tried to invoke `AnthropicProposer` from any CLI command
+(INCIDENTS.md #26 found the interface between it and its caller had never
+actually been reconciled — a real key would have crashed identically to a
+missing one).
+
+What has been verified: with no credential, `--live-hints` falls back and
+completes cleanly (or hard-errors under `MILAAN_REQUIRE_MODEL=1`); with a
+syntactically-valid-but-invalid key, it makes exactly one real HTTPS request —
+matching the one credit that both needs a hint and can use one — receives a
+real `AuthenticationError`, and degrades to an abstention without crashing the
+batch. What has **not** been verified: a successful call. There is no valid
+Anthropic credential in this project, so no run of `--live-hints` has ever
+received back a real model's answer. The request path, the failure path, and
+the wiring between the CLI and the layer are all exercised; a genuine response
+is the one thing that has not been.

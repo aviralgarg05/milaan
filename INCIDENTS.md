@@ -781,6 +781,17 @@ of that is not an argument about where an LLM does not belong — it is having
 built the thing, measured its ceiling honestly, found it to be zero, and
 published the zero. The negative result is the finding.
 
+**Addendum, 24 Aug — the table above is superseded twice.** The match counts
+(9/17/32) predate the capture-time ordering fix and are corrected in #19
+(12/18 matched at n=18). The "hallucinated claims rejected" row (6/10/18)
+predates a real wiring fix in #27: the hint was computed for every opaque
+narration whether or not the episode ever reached the branch that could use it,
+so the count included calls that were never going to matter. The corrected
+figure at n=18 is **2**, not 18 — the conclusion (`+0` ceiling, zero false
+matches, containment holds) is unchanged by either correction, but the specific
+numbers in the table above should not be quoted; use `milaan hints`' live
+output instead.
+
 ---
 
 ### #19 — sorting by id, not by time, silently broke the interval layer
@@ -1133,3 +1144,96 @@ applied by the same person who just finished writing the previous five
 self-corrections. This is the sixth. I did not find it by being more careful in
 general; I found it by re-deriving a specific mechanical fact (the traces must
 be identical) and refusing to trust a number until that fact checked out.
+
+---
+
+### #26 — the AI layer was never actually going to work, with or without a key
+
+**Date** 24 Aug · **Fixed by** `HintProposer.hint_for()` and a lazy `hint_provider` callback · **Pinned by** `tests/test_llm.py`, `tests/test_cli_integration.py`
+
+**The question that found this.** Not an audit this time — a direct question:
+*"is the AI thing done?"* Answering it honestly meant actually running the path
+a user with a real API key would run, rather than trusting that the pieces
+already tested (grounding, containment, the schema) implied the pieces around
+them worked too. They did not.
+
+**Finding 1 — `AnthropicProposer` could never be called from any CLI command.**
+`milaan run` never passed a `proposer` argument at all; there was no flag to
+request one. `AnthropicProposer` and `default_proposer()` were reachable only by
+importing `hints.llm` directly in a Python shell — not from `milaan run`,
+`milaan hints`, or any documented entry point. `hints/llm.py` had **zero test
+coverage**: nothing had ever constructed an `AnthropicProposer`, called
+`propose()`, or exercised `default_proposer()`'s fallback logic.
+
+**Finding 2 — even wired in, it crashed immediately.** Adding a `--live-hints`
+flag and testing it with no credential surfaced:
+
+```
+AttributeError: 'OfflineProposer' object has no attribute 'hint_for'
+```
+
+`hints/llm.py`'s proposers implement `propose(fields) -> Hint`. `run_batch()`
+calls `proposer.hint_for(fields, value_date) -> GroundedHint | None` — the
+interface `eval/hints_ab.py`'s stand-in proposers (`NullProposer`,
+`OracleProposer`, `MalignProposer`) happen to implement, because they were
+written specifically for `run_batch()`. Nobody had ever reconciled the real
+proposer's interface with what its only caller actually calls. A valid API key
+would have hit the identical crash, with `AnthropicProposer` instead of
+`OfflineProposer` — the failure had nothing to do with authentication.
+
+**Fix 1.** `HintProposer.hint_for()` — wraps `propose()` with `ground()`, so
+every proposer, real or stub, presents the interface the caller actually uses.
+
+**Finding 3, found immediately after fixing #2 — the real model would have been
+called far more than it needed to be.** With the interfaces reconciled, a fake
+key run reported **9 calls, 9 errors** — but only 2 of 18 episodes ever reach
+`TRY_BLIND`, the one branch that can use a hint. The hint was computed
+*eagerly*, once per opaque narration (9 of them), before `agent.run()` was even
+called, and passed in as a plain value. Whether the episode went on to need it
+was irrelevant — the call, and its cost, had already happened.
+
+With a real key this is not a rounding error: **7 of 9 paid calls in this batch
+could not possibly have mattered**, a 4.5× overspend, and it directly
+contradicts this module's own docstring — *"Spending a model call on a line
+... is the failure mode that makes 'we used AI' mean nothing."* The module said
+the right thing and the caller around it did the wrong one.
+
+**Fix 2.** `agent.run()` now takes `hint_provider`, a zero-argument callable,
+not a value — invoked at most once, only from inside `TRY_BLIND`. Re-measured:
+**1 call**, matching exactly the one credit that is both opaque and reaches
+`TRY_BLIND` (the other `TRY_BLIND` credit, `cr_0015`, is not opaque, so the
+hint layer's own precondition excludes it before any call is attempted — this
+was true before the fix too, it just cost 8 wasted calls to see it clearly).
+The `hints_ab.py` A/B harness uses the same call path, so its
+"hallucinated claims rejected" figure corrected too: 18 → **2** at n=18. The
+conclusion in #18 (`+0` ceiling, zero false matches) does not change; the
+supporting numbers were inflated by the same bug and are corrected here and in
+#18's addendum.
+
+**Verified end to end, not just unit-tested.** Ran `milaan run --live-hints`
+four ways: no credential (falls back with a printed reason, completes, exit 0);
+`MILAAN_REQUIRE_MODEL=1` with no credential (hard error, as documented); a
+syntactically-valid-but-fake key (one real HTTPS call, one `AuthenticationError`,
+caught inside `propose()`'s own handler, episode completes as an abstention,
+batch completes, exit 0); and the `hints` A/B subcommand, confirmed still
+correct. All four match what the code claims to do.
+
+**Why this is worth its own entry rather than a footnote on #18 or #25.** #18
+measured the ceiling honestly. #25 caught a fabricated version of that
+measurement before it shipped. Neither one noticed that the thing being
+measured could not run at all — because neither one ever tried to run it
+outside the A/B harness's own stand-ins. Measuring a claim carefully and
+verifying the claim is reachable are different disciplines, and I had been
+doing the first without the second.
+
+**What was added because of this, not just fixed.** `tests/test_llm.py` —
+`hints/llm.py`'s first test file: `CallStats` cost/percentile math,
+`OfflineProposer`'s abstention, `HintProposer.hint_for()`'s wrapping of
+`propose()` + `ground()` (including that an `unparseable` raw `Hint` becomes
+`None`, not an empty `GroundedHint`), and `default_proposer()`'s credential
+check under a cleared environment, a fake env var, and `MILAAN_REQUIRE_MODEL`.
+`tests/test_cli_integration.py` — the first tests in this project that invoke
+the actual installed `milaan` console script as a subprocess rather than
+calling a Python function in-process, because the bug that mattered here
+(`milaan run` never passing a `proposer`) was invisible to every test that
+called `run_batch()` directly with one supplied by hand.
