@@ -49,8 +49,13 @@ opposite failures), so it chooses the window by reacting to how the last attempt
 failed, across ~6.7 bounded, replayable decisions per credit.
 
 Where an LLM is used is deliberately narrow, and its contribution is **measured
-rather than claimed**: a *perfect* extractor, offered 4 lines, adds **+0**. That
-zero is published rather than engineered away.
+rather than claimed**: a *perfect* extractor is offered **zero** lines on this
+batch — the agent's policy resolves everything either by structure or by an
+honest refusal before the one branch where a hint could act is ever reached —
+and its ceiling is **+0** regardless. That zero, and the reachability count
+behind it, are published rather than engineered to look more impressive
+(INCIDENTS.md #25 is the near-miss where I almost shipped the "4 lines" version
+of this sentence before verifying it).
 
 ---
 

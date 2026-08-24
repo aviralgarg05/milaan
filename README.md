@@ -62,10 +62,16 @@ model can beat it — its score is the *ceiling* on what any model could add.
 
 Two separate facts, and they are worth keeping apart:
 
-**Measured.** The agent consults the hint layer on every credit whose narration
-the grammar cannot read — the oracle is offered **4 lines** and adds **+0**. The
-hostile config is offered 9 and has **18** hallucinated claims dropped by
-grounding before they reach the solver, with zero false matches.
+**Measured.** The hint layer is reachable only from `TRY_BLIND`, the agent's
+last resort — 9 of 18 narrations are opaque to the grammar, but only **2**
+credits ever reach the branch where a hint could act, and on this batch the
+oracle is consulted on **zero** of them: it abstains where there is no date to
+read, and the other credit reaching `TRY_BLIND` is not opaque at all, so the
+hint layer's own precondition excludes it before the oracle is asked. The
+hostile config, which fabricates regardless of content, is offered **1** and has
+**18** hallucinated claims dropped by grounding before they reach the solver,
+with zero false matches. (An earlier version of this paragraph said "offered 4
+lines" — the pre-fix count, caught before commit; INCIDENTS.md #25.)
 
 **Predicted, not demonstrated by that run.** Had it been invoked, containment
 says it still could not have raised the match rate: uniqueness is adjudicated on
@@ -258,19 +264,24 @@ labelled as mine — is in [`DATA.md`](DATA.md).
 ## What broke
 
 [`INCIDENTS.md`](INCIDENTS.md) — written as it happened, with commit hashes and
-the regression test that pins each one. ****25 entries****, and the pattern in
-them is the point: six are cases where the thing that broke was my own
-conclusion rather than my code.
+the regression test that pins each one. **25 entries**, and the pattern in
+them is the point: seven are cases where the thing that broke was my own
+conclusion or my own words, rather than the code.
 
 A floating-point hazard I asserted without measuring, and that measurement showed
 **does not exist** (#6). A test that called a cover unique when the solver was
-right to call it ambiguous (#7). A solver that returned UNIQUE on a provably
-ambiguous input, which 100+ property tests missed because **no generator I wrote
-ever sampled a zero** (#14). A fee anomaly I proved was not a single rate, then
-stopped — it was two rates, and someone else found it (#16). A 0% first run that
-was the solver being correct and my architecture being wrong (#17). A test class
+right to call it ambiguous (#7). A fee anomaly I proved was not a single rate,
+then stopped — it was two rates, and someone else found it (#16). A test class
 named after an outcome its construction could not guarantee, which had been
-quietly grading the engine on a curve (#20).
+quietly grading the engine on a curve (#20). An external audit found the README
+**answering its own central attack with a falsehood** — claiming Razorpay
+authored the settlement grouping in the evaluation batch, when the generator
+does (#21). My own headline safety property was false as stated, sitting one
+file away from a test that celebrated the counterexample without me noticing
+(#22). And wiring up the agent, I nearly shipped a fabricated version of the
+hint layer's ceiling — caught only by re-deriving that the three A/B
+configurations' decision traces had to be byte-identical, and checking that
+they were (#25).
 
 ## Status
 

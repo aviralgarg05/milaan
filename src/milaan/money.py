@@ -179,26 +179,36 @@ def from_rupee_str(text: str) -> Paisa:
     """Parse a rupee string as it appears in a statement or a dashboard export.
 
     Tolerates the presentation noise Indian financial exports carry — a rupee
-    sign, Indian-grouping commas, whitespace, and a trailing ``Cr``/``Dr``
-    marker — but not ambiguity. ``Dr`` yields a negative amount.
+    sign, Indian-grouping commas, whitespace, a trailing ``Cr``/``Dr`` marker,
+    and accounting-style parentheses — but not ambiguity. ``Dr`` yields a
+    negative amount.
+
+    Multiple negative markers REINFORCE rather than cancel. A hand-typed or
+    exported string carrying more than one — ``"(100) Dr"``, ``"-100 Dr"`` — is
+    someone emphasising that a value is a debit, not an algebraic expression
+    where two negatives make a positive. An earlier version XORed the markers
+    and read ``"-100 Dr"`` as **positive** ₹100, the opposite of what anyone
+    writing that string meant. Any negative signal present makes the result
+    negative; only the complete absence of one yields positive.
     """
     if not isinstance(text, str):
         raise TypeError(f"expected str, got {type(text).__name__}")
     s = text.strip().replace("₹", "").replace("INR", "").replace(",", "").strip()
-    sign = 1
-    for marker, mult in (("CR", 1), ("DR", -1)):
+    negative = False
+    for marker, marks_negative in (("CR", False), ("DR", True)):
         if s.upper().endswith(marker):
-            sign = mult
+            negative = negative or marks_negative
             s = s[: -len(marker)].strip()
             break
     if s.startswith("(") and s.endswith(")"):  # accounting negative
-        sign = -sign
+        negative = True
         s = s[1:-1].strip()
     if s.startswith("-"):
-        sign = -sign
+        negative = True
         s = s[1:].strip()
     if not s:
         raise ValueError(f"no amount in {text!r}")
+    sign = -1 if negative else 1
     try:
         d = Decimal(s)
     except InvalidOperation as exc:

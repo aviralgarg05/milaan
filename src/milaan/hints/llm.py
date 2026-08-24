@@ -26,8 +26,10 @@ alongside accuracy, because a reconciliation engine's cost per line is a real
 operational number and almost no submission reports one.
 
 **It works with no API key.** ``propose()`` with no credentials returns an
-explicit abstention rather than raising, so ``make demo`` runs offline and the
-deterministic half of MILAAN is never gated behind a key.
+explicit abstention rather than raising, so ``python -m milaan.cli run`` works
+offline and the deterministic half of MILAAN is never gated behind a key.
+`anthropic` is an optional extra (``pip install -e ".[hints]"``) for exactly
+this reason.
 """
 
 from __future__ import annotations
@@ -119,7 +121,9 @@ class OfflineProposer(HintProposer):
 
     MILAAN degrades to its deterministic half rather than failing: lines the
     grammar cannot read stay in the exception list, which is exactly where they
-    would be without a model. `make demo` uses this.
+    would be without a model. This is the default `HintProposer` for
+    `python -m milaan.cli run` when `anthropic` is not installed or no key is
+    configured — there is no separate demo mode; it is the same command.
     """
 
     def __init__(self) -> None:

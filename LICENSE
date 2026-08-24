@@ -33,3 +33,31 @@ with their source URLs recorded in `data/razorpay-samples/SOURCES.md`. Those
 files remain Razorpay's; no licence to them is granted or implied here.
 `docs/00-brief.md` likewise quotes Razorpay's published buildathon copy verbatim
 for reference and is quoted, not licensed.
+
+---
+
+## Scope of this license
+
+The MIT grant above covers the source code in this repository: everything under
+`src/`, `tests/`, `scripts/`, and this project's own documentation prose.
+
+It does **not** extend to two kinds of third-party material vendored here for
+verification and citation, neither of which I hold rights to relicense:
+
+- **`data/razorpay-samples/*.xlsx`** — Razorpay's own published sample settlement
+  reports, downloaded verbatim from their public documentation
+  (`data/razorpay-samples/SOURCES.md` records the exact URLs). Included so the
+  closure-identity claim in this project is independently checkable against the
+  original files, not a description of them. Razorpay retains whatever rights
+  they hold in this data; nothing here purports to grant further rights to it.
+
+- **`docs/00-brief.md`** — a verbatim capture of the Razorpay AI Buildathon
+  track descriptions from razorpay.com/buildathon/, kept so the submission can
+  be checked against the brief it responds to. Quoted for reference and
+  attribution, under the same reasoning that applies to citing any competition's
+  own rules in a submission to that competition — not offered under this
+  project's MIT terms.
+
+If you fork this repository, treat both as **read but do not redistribute
+independently of their original source** unless you have your own rights to
+them.

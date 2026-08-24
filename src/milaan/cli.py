@@ -36,7 +36,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from .agent import ReconciliationAgent
+from .agent import Action, ReconciliationAgent
 from .fees import base_fee_two_component
 from .hints.grounding import Candidate, resolve
 from .narration.grammar import extract
@@ -78,17 +78,28 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
         fields = extract(credit.narration)
         t0 = time.perf_counter()
 
+        # Computed eagerly and passed into the agent, but it can only ever
+        # matter inside TRY_BLIND (see agent.py). Counting it as "offered" here,
+        # before the agent has run, would double-count: a credit the interval
+        # layer resolves never reaches the branch where a hint could act, no
+        # matter how confidently it was proposed. So "offered" is measured
+        # AFTER the episode, from whether TRY_BLIND actually appears in its
+        # trace — see below.
         hint = None
         if proposer is not None and fields.is_opaque:
             hint = proposer.hint_for(fields, vd)
             if hint is not None:
-                hinted += 1
                 rejected_claims += len(hint.rejected_claims)
 
         episode = agent.run(credit_id=credit.credit_id, target_paise=credit.amount_paise,
-                            value_date=vd, rows=rows_in, fields=fields)
+                            value_date=vd, rows=rows_in, fields=fields, hint=hint)
         result, layer = episode, episode.layer
         elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        if hint is not None and any(s.action is Action.TRY_BLIND for s in episode.steps):
+            hinted += 1
+            if episode.hint_rescued:
+                rescued += 1
 
         truth = frozenset(
             r.entity_id for r in ledger
@@ -125,7 +136,7 @@ def run_batch(batch: Batch, *, budget: Budget | None = None, verbose: bool = Tru
             mark = {"MATCHED": "✓", "FALSE_MATCH": "✗✗", "AMBIGUOUS_COVER": "≡",
                     "NO_COVER": "—", "BUDGET_EXCEEDED": "?"}[verdict]
             print(f"  {mark:<2} {credit.credit_id}  ₹{credit.amount_paise/100:>12,.2f}  "
-                  f"pool={len(pool):>3}  {verdict:<16} planted={credit.planted_class}")
+                  f"pool={rows[-1]['pool_size']:>3}  {verdict:<16} planted={credit.planted_class}")
 
     wall = time.perf_counter() - started
     verdicts = Counter(r["verdict"] for r in rows)

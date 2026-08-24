@@ -109,6 +109,13 @@ class Episode:
     second_cover: tuple[str, ...] = ()
     final_window: int = 0
     layer: str = "interval"
+    hint_rescued: bool = False
+    """True iff a hint changed BUDGET_EXCEEDED into a decided outcome for this credit.
+
+    This is the only way a hint can affect an episode's outcome, and it is the exact
+    named exception documented in `hints/grounding.py` (INCIDENTS.md #22) — never a
+    changed verdict on an otherwise-decidable credit.
+    """
 
     @property
     def actions(self) -> str:
@@ -145,8 +152,16 @@ class ReconciliationAgent:
         return Action.ESCALATE
 
     def run(self, *, credit_id: str, target_paise: int, value_date: date,
-            rows: list[tuple[str, int, str, date]], fields: NarrationFields) -> Episode:
-        """Resolve one credit. `rows` is (entity_id, net_paise, captured_at, captured_on)."""
+            rows: list[tuple[str, int, str, date]], fields: NarrationFields,
+            hint=None) -> Episode:
+        """Resolve one credit. `rows` is (entity_id, net_paise, captured_at, captured_on).
+
+        `hint` is consulted ONLY inside TRY_BLIND — the interval layer never sees it,
+        because interval search has no hint-shaped input to accept and does not need
+        one. This is the sole place the LLM layer's output can reach the solver, and
+        it goes through `hints.grounding.resolve`, whose containment guarantee is
+        unchanged by routing through the agent instead of being called directly.
+        """
         ep = Episode(credit_id=credit_id)
         rung = 0
         last: Outcome | None = None
@@ -220,7 +235,9 @@ class ReconciliationAgent:
                 continue
 
             if action is Action.TRY_BLIND:
-                r = resolve(pool, target_paise, budget=self.budget)
+                r = resolve(pool, target_paise, budget=self.budget, hint=hint)
+                if r.used_hint:
+                    ep.hint_rescued = True
                 ep.steps.append(Step(obs, action, r.outcome, "unordered subset-sum"))
                 ep.outcome, ep.cover, ep.second_cover = r.outcome, r.cover, r.second_cover
                 ep.final_window, ep.layer = window, "blind"
