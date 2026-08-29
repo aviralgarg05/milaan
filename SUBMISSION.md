@@ -167,77 +167,118 @@ produced exceptions that looked like real findings.
 
 ---
 
-## 5-minute video script
+## 5-minute video script — FINAL
 
-Written to be said, not read — contractions, short sentences, talk to the
-camera like you're explaining it to a friend, not narrating a demo reel.
+One continuous take, spoken to camera, three commands run live at the marked
+points. All three were verified working on this exact machine right before
+this was finalized.
 
-**[0:00–0:20] Open on the problem.** *(Terminal, `pytest` already running
-against Razorpay's own sample file.)* "Okay so — this is Razorpay's own sample
-settlement report. Three settlements in here, and every one's payments and
-refunds add up to the total exactly, down to the paisa. The fourth one doesn't
-add up — and that's not a bug, that's just an out-of-window settlement. I
-checked my rules against their real data before I ever wrote a solver."
+**Before you hit record:**
 
-**[0:20–0:55] Why this is actually hard.** "Here's the real problem. A
-merchant's bank statement shows one lump credit — say eight lakh rupees, one
-line, a garbled reference number. Razorpay's dashboard shows the three hundred
-forty individual payments that make it up. Nobody actually connects those two.
-And if you guess wrong, it's worse than not answering — a wrong match still
-balances on paper. Nothing downstream ever catches it."
+```bash
+cd "/Users/aviralgarg/Everything/razorpay submission"
+```
 
-**[0:55–1:35] Show it running.** *(Run `milaan run --trace`.)* "This is MILAAN,
-live. Eighteen credits, two-thirty-seven ledger rows. Eighty percent match rate
-on the ones that are actually solvable, zero false matches. And watch this —"
-*(point at one trace line)* "— it's not just matching, it's deciding. Try a
-window; too narrow, widen it; too many matches, narrow it; stop the moment
-exactly one answer survives. Every decision's logged — you can replay it."
+Confirm the prompt shows `razorpay submission` before you start talking — the
+default terminal opens in your home folder, not here.
 
-**[1:35–2:10] The agent almost lied to me.** "I built that loop because someone
-asked me directly — is this actually an agent, or an if-else with extra steps?
-Fair question. A fixed window really was broken — too wide gives false ties,
-too narrow drops real payments. So I made it adaptive. And within an hour of
-turning it on, it gave me a false answer — it locked onto a narrow window
-without checking if a wider one hid a second possible match. Which is exactly
-the mistake I'd already written a hundred tests to prevent, three files away.
-Fixed it the same way: always check the widest window before you commit."
+---
 
-**[2:10–2:40] The refusal, on screen.** *(Show an `AMBIGUOUS_COVER`, both
-witnesses.)* "Here's what a refusal looks like. Two different sets of
-transactions both add up to this credit exactly. I genuinely can't tell you
-which one's real, so I don't guess — I show you both. Not rare, either: that's
-just a subscription merchant charging the same price to a bunch of people."
+"Hey, so let me tell you what I built and why.
 
-**[2:40–3:25] The AI part, and the number I didn't want.** *(Run
-`milaan hints`.)* "Now the actual AI piece. I measured its ceiling — the best
-any model could ever do here — and it's zero. Plus zero. By the time a hint
-would matter, the answer's already uniquely decided or it isn't; a hint can't
-break a tie. And when I actually wired up a real API call, it crashed the
-first time — wrong method name. Fixed that, then found it would've made nine
-paid calls when only one could ever matter. Fixed both. Now it makes exactly
-one call, only when it's needed, and degrades cleanly if the key's bad."
+Here's the problem. Say you're a merchant using Razorpay. One day your bank
+account gets one lump credit — like 8 lakh rupees, one line, some garbled
+reference number. But that's not one payment. That's actually 340 different
+customer payments, minus a few refunds, minus Razorpay's fee, all bundled into
+one number. Nobody actually connects the two — it's usually done by hand, or
+not done at all.
 
-**[3:25–4:05] What broke, honestly.** "Twenty-seven things broke building
-this, all logged with dates and commit hashes. Eight of those weren't code
-bugs — they were me being wrong. I asserted a bug that didn't exist. I scored
-a flat zero on my first real run and it turned out the solver was right the
-whole time, my test was wrong. I proved Razorpay's fee couldn't be one flat
-rate and then stopped one question short of the real two-part formula. I even
-caught myself once, right before shipping, about to publish a number that
-wasn't real."
+And here's what made me actually care: getting it wrong is worse than not
+answering. If my tool confidently says 'these 12 payments make up this
+credit' and it's wrong, that report still balances on paper. Nothing
+downstream catches it — it's a silent mistake. So the real bar isn't 'how
+often is it right,' it's 'how often is it confidently wrong.' That number
+needs to be zero.
 
-**[4:05–4:40] Limits, plainly.** "What I can't claim: this is eighteen
-credits, one seed, and the grouping rule is my best reading of Razorpay's
-settlement cycle, not something I observed directly. The narrations are
-synthetic. What I can claim, narrowly and exactly: given a ledger and credits
-grouped by a documented rule, this recovers the right grouping eighty percent
-of the time, and it has never once told me a wrong answer with confidence."
+So I built MILAAN. It reconstructs which transactions make up a bank credit,
+to the paisa, and refuses to answer when it's not sure, instead of guessing.
 
-**[4:40–5:00] Close.** "That's MILAAN. Probably not the flashiest agent in the
-room — but it's one that knows exactly when to shut up."
+Now here's where AI actually comes in — and this is the part I want to walk
+you through properly, because it's not just 'I called an API and it works.'
 
-**Recording notes.** One take covers `milaan run --trace` and `milaan hints` —
-both finish in under a second; a bad-key `--live-hints` run adds about a
-second for the real HTTP round trip. Don't re-enact the ambiguous-cover or
-false-match moments — say them plainly, they don't need a re-run. Slow down on
-the limits section; it's the part worth them actually hearing.
+Some bank narrations are clean — they have a proper reference number, easy to
+parse. But a lot of them are just messy human-written text, no fixed format.
+That's exactly the kind of thing a language model is good at and plain code
+isn't. So for those messy ones, I call Claude — and only for those, never for
+the clean ones — and ask it to pull out whatever identifiers it can see in
+the text. Nothing more. It doesn't get to see the amounts, it doesn't get to
+decide what matches what — it only reads.
+
+And then, before anything the model says is trusted, it goes through a check
+I call grounding — every single thing the model claims has to actually appear
+word-for-word in the original text. If it makes something up, that claim just
+gets thrown away before it can touch the final answer. So even if the model
+hallucinates, it literally cannot cause a wrong match — the worst it can do
+is say nothing useful.
+
+Now here's the honest part. I actually measured how much this AI layer helps
+on my test data — and the answer is zero. Because by the time a hint would
+even matter, the answer's already been decided one way or the other by the
+matching logic. I'm not hiding that number, I'm showing it, because a fake
+positive number would be worse than an honest zero.
+
+And getting this wired up properly wasn't smooth — quick version: it crashed
+the first time I connected it for real, and once fixed, I found it was making
+way more paid API calls than it actually needed. Fixed both, logged both.
+
+Alright, let me actually show you it running.
+
+**[RUN]**
+```bash
+uv run --with pytest --with openpyxl --with-editable . pytest tests/test_sample_reports.py -v -o addopts=""
+```
+**[SHOW]** all 10 lines print PASSED — point at
+`test_closure_identity_holds_on_every_complete_settlement` and
+`test_the_interesting_settlement_nets_a_refund_against_five_payments`.
+
+"This proves my logic works on Razorpay's own real sample data, not something
+I made up — these settlements add up exactly, to the paisa.
+
+**[RUN]**
+```bash
+uv run --with openpyxl --with-editable . python -m milaan.cli run --trace
+```
+**[SHOW]** scroll to the `MILAAN SCORECARD` block first (match rate, false
+matches), then scroll up and point at the `cr_0006` trace line — it widens
+three times before it accepts — and at `cr_0011` or `cr_0013`, both marked
+`AMBIGUOUS_COVER`.
+
+This is the tool running live. 18 bank credits, 237 rows. 80% right, and zero
+wrong answers. And here, you can see it thinking — widening, narrowing,
+deciding. And right here — two possible answers, so it just says 'I don't
+know which one, here's both,' instead of guessing.
+
+**[RUN]**
+```bash
+uv run --with openpyxl --with-editable . python -m milaan.cli hints
+```
+**[SHOW]** point at the line `CEILING ON ANY MODEL   +0 credits`.
+
+And this is that AI layer — you can see right here, the measured value it
+adds on this batch is zero, shown honestly.
+
+Along the way, a bunch of things broke and got fixed and logged — including a
+few times where I was just wrong, not the code. That's part of why I trust
+these numbers.
+
+So yeah — that's MILAAN. Not the flashiest thing here, but built to never lie
+to you. It either gets it right, or it tells you it doesn't know."
+
+---
+
+**Recording notes.** All three commands finish in under a second each — the
+pause is you talking over the output, not waiting on it. Do one full read-
+through of the monologue out loud first without the terminal, so the AI
+section doesn't feel like it's being read off a page. Don't re-enact
+anything — every number above was run and confirmed on this machine right
+before this script was finalized.
